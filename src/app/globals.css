@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* GLOBAL BACKGROUND — restrained dark, faint vignette and micro-grid */
+:root {
+  --accent-cyan: 0 255 255;
+  --accent-emerald: 16 185 129;
+  --accent-amber: 245 158 11;
+  --accent-purple: 168 85 247;
+  --accent-rose: 244 63 94;
+}
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-white;
+  background-image:
+    /* micro grid */
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+    /* vignette */
+    radial-gradient(1200px 600px at 50% 0%, rgba(255,255,255,0.05), transparent),
+    radial-gradient(1200px 600px at 50% 100%, rgba(0,0,0,0.35), transparent);
+  background-size: 20px 20px, 20px 20px, 100% 100%, 100% 100%;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+}
+
+/* Futuristic focus ring */
+* :focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--accent-cyan)/1), 0 0 16px rgba(var(--accent-cyan)/0.35);
+  transition: box-shadow 200ms ease;
+}
+
+/* Glass Slab */
+.holo-glass {
+  @apply rounded-slab backdrop-blur-md border border-white/10 shadow-glass bg-white/5;
+}
+
+/* Neon rail (left border glow) */
+.neon-rail {
+  position: relative;
+}
+.neon-rail::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 10%;
+  bottom: 10%;
+  width: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #22d3ee, #a78bfa, #f43f5e);
+  box-shadow: 0 0 12px rgba(34,211,238,0.7), 0 0 24px rgba(168,139,250,0.5);
+}
+
+/* Subtle hover lift */
+.hover-lift {
+  transform: translateY(0);
+  transition: transform 250ms var(--ease-smooth), box-shadow 250ms var(--ease-smooth);
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35), 0 0 20px rgba(34,211,238,0.18);
+}
+
+:root {
+  --ease-smooth: cubic-bezier(.2,.8,.2,1);
+}
+
+/* Cursor */
+body, button, input, select, textarea {
+  cursor: default;
+}
+
+/* Status glow rings — outside the plate, not tinting content */
+.glow-amber { box-shadow: 0 0 30px rgba(245,158,11,0.25); }
+.glow-red   { box-shadow: 0 0 30px rgba(244,63,94,0.25); }
+.glow-green { box-shadow: 0 0 30px rgba(16,185,129,0.25); }
+.glow-purple{ box-shadow: 0 0 30px rgba(168,85,247,0.25); }
+
+/* LANDMARK: KPI Tiles */
+.kpi-number { @apply text-3xl font-semibold tracking-tight; }
+.kpi-label  { @apply text-xs uppercase text-white/70; }
