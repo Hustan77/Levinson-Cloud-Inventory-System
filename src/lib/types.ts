@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-/** LANDMARK: domain types */
-
 export type Supplier = {
   id: number;
   name: string;
@@ -63,6 +61,7 @@ export type Order = {
   need_by_date: string | null;
   is_return: boolean;
   return_reason: string | null;
+  notes: string | null;            // LANDMARK: notes field (backorder/special)
   created_at: string;
   arrived_at: string | null;
   received_by: string | null;
@@ -73,9 +72,10 @@ export type VOrderEnriched = Order & {
   supplier_name: string | null;
 };
 
-/** LANDMARK: zod schemas for API IO */
 export const CreateOrderSchema = z.object({
   item_type: z.enum(["casket","urn"]),
+  // NORMAL: item_id set, item_name null
+  // SPECIAL: item_id null, item_name set
   item_id: z.number().int().nullable(),
   item_name: z.string().nullable(),
   supplier_id: z.number().int().nullable().optional(),
@@ -88,8 +88,8 @@ export const CreateOrderSchema = z.object({
   need_by_date: z.string().nullable().optional(),
   is_return: z.boolean().default(false).optional(),
   return_reason: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),     // LANDMARK: notes
 });
-
 export type CreateOrderInput = z.infer<typeof CreateOrderSchema>;
 
 export const UpdateOrderSchema = z.object({
@@ -97,10 +97,10 @@ export const UpdateOrderSchema = z.object({
   expected_date: z.string().nullable().optional(),
   backordered: z.boolean().optional(),
   tbd_expected: z.boolean().optional(),
-  // allow editing deadline/return flags on update page if needed later
   need_by_date: z.string().nullable().optional(),
   is_return: z.boolean().optional(),
   return_reason: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),     // LANDMARK: notes
 });
 
 export const ArriveSchema = z.object({

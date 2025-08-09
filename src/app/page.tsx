@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import type { Route } from "next"; // ✅ typedRoutes: use Route for Link href
+import type { Route } from "next";
 import { HoloPanel } from "./components/HoloPanel";
 import { KpiTile } from "./components/KpiTile";
 import { OrderCard } from "./components/OrderCard";
@@ -28,42 +28,19 @@ export default function Dashboard() {
     ]);
 
     setOrders(o);
-    setCounts({
-      caskets: c.length,
-      urns: u.length,
-      suppliers: s.length,
-      ordersActive: o.length,
-    });
+    setCounts({ caskets: c.length, urns: u.length, suppliers: s.length, ordersActive: o.length });
 
     const statusRows: any[] = Array.isArray(vs) ? vs : [];
-    const needs = statusRows
-      .filter(r => r.requires_attention)
-      .map((r) => ({
-        item_type: r.item_type,
-        item_id: r.item_id,
-        name: r.name,
-        short_by: r.short_by,
-      }));
-    setAlerts(needs);
+    setAlerts(statusRows.filter(r => r.requires_attention).map(r => ({
+      item_type: r.item_type, item_id: r.item_id, name: r.name, short_by: r.short_by
+    })));
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  const grouped = useMemo(() => {
-    const g = {
-      PENDING: [] as VOrderEnriched[],
-      BACKORDERED: [] as VOrderEnriched[],
-      SPECIAL: [] as VOrderEnriched[],
-    };
-    for (const o of orders) {
-      if (o.status === "PENDING") g.PENDING.push(o);
-      else if (o.status === "BACKORDERED") g.BACKORDERED.push(o);
-      else if (o.status === "SPECIAL") g.SPECIAL.push(o);
-    }
-    return g;
+  const mixed = useMemo(() => {
+    // Mix PENDING + BACKORDERED + SPECIAL, newest first
+    return [...orders].sort((a, b) => (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }, [orders]);
 
   return (
@@ -83,20 +60,15 @@ export default function Dashboard() {
             <div className="text-sm">
               <strong className="text-rose-300">Attention:</strong> {alerts.length} product(s) are short and have backorders.
             </div>
-            {/* ✅ typedRoutes fix: cast to Route */}
-            <Link href={"/orders" as Route}>
-              <Button size="sm" variant="outline">View All Orders</Button>
-            </Link>
+            <Link href={"/orders" as Route}><Button size="sm" variant="outline">View All Orders</Button></Link>
           </div>
           <ul className="mt-2 text-sm text-white/80 list-disc pl-6">
-            {alerts.slice(0, 5).map((a) => (
-              <li key={`${a.item_type}-${a.item_id}`}>{a.name} — short by {a.short_by}</li>
-            ))}
+            {alerts.slice(0,5).map(a => (<li key={`${a.item_type}-${a.item_id}`}>{a.name} — short by {a.short_by}</li>))}
           </ul>
         </HoloPanel>
       )}
 
-      {/* LANDMARK: Quick actions */}
+      {/* LANDMARK: Quick action */}
       <HoloPanel railColor="cyan">
         <div className="flex items-center justify-between">
           <div className="text-sm text-white/80">Create a new order</div>
@@ -104,44 +76,13 @@ export default function Dashboard() {
         </div>
       </HoloPanel>
 
-      {/* LANDMARK: Order Lanes (ARRIVED excluded) */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <Lane title="Pending" color="amber" items={grouped.PENDING} reload={load} />
-        <Lane title="Backordered" color="rose" items={grouped.BACKORDERED} reload={load} />
-        <Lane title="Special" color="purple" items={grouped.SPECIAL} reload={load} />
-      </div>
-    </div>
-  );
-}
-
-function Lane({
-  title,
-  color,
-  items,
-  reload,
-}: {
-  title: string;
-  color: string;
-  items: VOrderEnriched[];
-  reload: () => void;
-}) {
-  return (
-    <div>
-      <div className="mb-2 text-white/70 uppercase tracking-widest text-xs">{title}</div>
+      {/* LANDMARK: Mixed order list */}
       <div className="space-y-3">
-        {items.map((o) => (
-          <OrderCard key={o.id} order={o} onRefresh={reload} />
-        ))}
-        {items.length === 0 && <EmptyLane text={`No ${title.toLowerCase()} orders`} />}
+        {mixed.map(o => (<OrderCard key={o.id} order={o} onRefresh={load} />))}
+        {mixed.length === 0 && (
+          <HoloPanel railColor="cyan"><div className="text-sm text-white/60">No active orders</div></HoloPanel>
+        )}
       </div>
     </div>
-  );
-}
-
-function EmptyLane({ text }: { text: string }) {
-  return (
-    <HoloPanel railColor="cyan">
-      <div className="text-sm text-white/60">{text}</div>
-    </HoloPanel>
   );
 }

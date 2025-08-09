@@ -22,7 +22,6 @@ export async function PATCH(req: Request) {
   const sb = supabaseServer();
   const patch = parsed.data;
 
-  // If non-backordered now and no expected_date -> error
   if (patch.backordered === false) {
     if (!patch.expected_date) {
       return new NextResponse("Provide expected_date when not backordered.", { status: 400 });
@@ -35,13 +34,8 @@ export async function PATCH(req: Request) {
   const { data, error } = await sb.from("orders").update(patch).eq("id", id).select("*").single();
   if (error) return new NextResponse(error.message, { status: 500 });
 
-  // keep coherent status if not ARRIVED
   if (data.status !== "ARRIVED") {
-    const nextStatus = data.special_order
-      ? "SPECIAL"
-      : data.backordered
-      ? "BACKORDERED"
-      : "PENDING";
+    const nextStatus = data.special_order ? "SPECIAL" : (data.backordered ? "BACKORDERED" : "PENDING");
     const upd = await sb.from("orders").update({ status: nextStatus }).eq("id", id);
     if (upd.error) return new NextResponse(upd.error.message, { status: 500 });
     return NextResponse.json({ ...data, status: nextStatus }, { status: 200 });

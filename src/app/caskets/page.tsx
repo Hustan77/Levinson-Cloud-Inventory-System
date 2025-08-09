@@ -19,10 +19,9 @@ type Filters = {
 export default function CasketsPage() {
   const [rows, setRows] = useState<Casket[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [filters, setFilters] = useState<Filters>({
-    supplier: "", material: "", jewish: "", green: "", q: "",
-  });
+  const [filters, setFilters] = useState<Filters>({ supplier: "", material: "", jewish: "", green: "", q: "" });
   const [openModal, setOpenModal] = useState<null | { mode: "add" } | { mode: "edit", row: Casket }>(null);
+  const [adjusting, setAdjusting] = useState<null | Casket>(null);
 
   async function load() {
     const [c, s] = await Promise.all([
@@ -41,8 +40,8 @@ export default function CasketsPage() {
       if (filters.jewish === "no"  && r.jewish) return false;
       if (filters.green  === "yes" && !r.green) return false;
       if (filters.green  === "no"  && r.green) return false;
-      const num = (x: any)=> x==null? null : Number(x);
-      const within = (v: number | null | undefined, min?: string, max?: string) => {
+      const num = (x:any)=> x==null? null : Number(x);
+      const within = (v:number|null|undefined,min?:string,max?:string)=> {
         if (v==null) return true;
         if (min && v < Number(min)) return false;
         if (max && v > Number(max)) return false;
@@ -69,7 +68,7 @@ export default function CasketsPage() {
         <Button variant="default" onClick={()=>setOpenModal({ mode: "add" })}>Add Casket</Button>
       </div>
 
-      {/* LANDMARK: Filters (compact) */}
+      {/* LANDMARK: Filters */}
       <HoloPanel railColor="cyan">
         <div className="text-xs text-white/60 mb-2">Filters</div>
         <div className="grid md:grid-cols-6 gap-2">
@@ -110,15 +109,14 @@ export default function CasketsPage() {
             <Input className="input-sm" placeholder="Name..." value={filters.q} onChange={e=>setFilters(f=>({...f, q: e.target.value}))}/>
           </div>
         </div>
-
-        {/* LANDMARK: Dim filters */}
+        {/* Dimensions */}
         <div className="grid md:grid-cols-6 gap-2 mt-3">
-          <Dim min={filters.minEW} max={filters.maxEW} label="Ext Width" onMin={v=>setFilters(f=>({...f, minEW:v}))} onMax={v=>setFilters(f=>({...f, maxEW:v}))}/>
-          <Dim min={filters.minEL} max={filters.maxEL} label="Ext Length" onMin={v=>setFilters(f=>({...f, minEL:v}))} onMax={v=>setFilters(f=>({...f, maxEL:v}))}/>
-          <Dim min={filters.minEH} max={filters.maxEH} label="Ext Height" onMin={v=>setFilters(f=>({...f, minEH:v}))} onMax={v=>setFilters(f=>({...f, maxEH:v}))}/>
-          <Dim min={filters.minIW} max={filters.maxIW} label="Int Width" onMin={v=>setFilters(f=>({...f, minIW:v}))} onMax={v=>setFilters(f=>({...f, maxIW:v}))}/>
-          <Dim min={filters.minIL} max={filters.maxIL} label="Int Length" onMin={v=>setFilters(f=>({...f, minIL:v}))} onMax={v=>setFilters(f=>({...f, maxIL:v}))}/>
-          <Dim min={filters.minIH} max={filters.maxIH} label="Int Height" onMin={v=>setFilters(f=>({...f, minIH:v}))} onMax={v=>setFilters(f=>({...f, maxIH:v}))}/>
+          <Dim label="Ext Width"  min={filters.minEW} max={filters.maxEW} onMin={v=>setFilters(f=>({...f, minEW:v}))} onMax={v=>setFilters(f=>({...f, maxEW:v}))}/>
+          <Dim label="Ext Length" min={filters.minEL} max={filters.maxEL} onMin={v=>setFilters(f=>({...f, minEL:v}))} onMax={v=>setFilters(f=>({...f, maxEL:v}))}/>
+          <Dim label="Ext Height" min={filters.minEH} max={filters.maxEH} onMin={v=>setFilters(f=>({...f, minEH:v}))} onMax={v=>setFilters(f=>({...f, maxEH:v}))}/>
+          <Dim label="Int Width"  min={filters.minIW} max={filters.maxIW} onMin={v=>setFilters(f=>({...f, minIW:v}))} onMax={v=>setFilters(f=>({...f, maxIW:v}))}/>
+          <Dim label="Int Length" min={filters.minIL} max={filters.maxIL} onMin={v=>setFilters(f=>({...f, minIL:v}))} onMax={v=>setFilters(f=>({...f, maxIL:v}))}/>
+          <Dim label="Int Height" min={filters.minIH} max={filters.maxIH} onMin={v=>setFilters(f=>({...f, minIH:v}))} onMax={v=>setFilters(f=>({...f, maxIH:v}))}/>
         </div>
       </HoloPanel>
 
@@ -132,8 +130,10 @@ export default function CasketsPage() {
                 <div className="text-xs text-white/60 mt-1">
                   Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}
                 </div>
-                <div className="text-xs text-white/60 mt-1">
-                  Material: {row.material} {row.jewish ? "• Jewish" : ""} {row.green ? "• Green" : ""}
+                <div className="text-xs text-white/60 mt-1 flex gap-3">
+                  <span>Material: {row.material}</span>
+                  <span>{row.jewish ? "Jewish" : "Non‑Jewish"}</span>
+                  <span>{row.green ? "Green" : "—"}</span>
                 </div>
                 <div className="text-xs text-white/60 mt-1">
                   Ext: {row.ext_width_in ?? "—"}W × {row.ext_length_in ?? "—"}L × {row.ext_height_in ?? "—"}H
@@ -141,7 +141,6 @@ export default function CasketsPage() {
                 <div className="text-xs text-white/60">
                   Int: {row.int_width_in ?? "—"}W × {row.int_length_in ?? "—"}L × {row.int_height_in ?? "—"}H
                 </div>
-                {/* LANDMARK: Inventory status */}
                 <div className="mt-2 text-xs">
                   Target: <b>{row.target_qty}</b> • On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order}</b> • Backorders: <b className="text-rose-300">{row.backordered_count}</b>
                   <div className={(row.on_hand + row.on_order) >= row.target_qty ? "text-emerald-300" : "text-amber-300"}>
@@ -151,6 +150,7 @@ export default function CasketsPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <Button size="sm" variant="outline" onClick={()=>setOpenModal({ mode: "edit", row })}>Edit</Button>
+                <Button size="sm" variant="outline" onClick={()=>setAdjusting(row)}>Adjust On‑Hand</Button>
                 <Button size="sm" variant="outline" onClick={async ()=>{
                   if(!confirm("Delete this casket?")) return;
                   const res = await fetch(`/api/caskets/${row.id}`, { method: "DELETE" });
@@ -172,6 +172,22 @@ export default function CasketsPage() {
           onSaved={load}
         />
       )}
+
+      {adjusting && (
+        <AdjustOnHandModal
+          row={adjusting}
+          onClose={()=>setAdjusting(null)}
+          onSaved={async (delta) => {
+            const next = adjusting.on_hand + delta;
+            const res = await fetch(`/api/caskets/${adjusting.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ on_hand: next })
+            });
+            if(!res.ok){ alert(await res.text()); return; }
+            setAdjusting(null); load();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -187,7 +203,7 @@ function Dim({ label, min, max, onMin, onMax }: { label: string; min?: string; m
   );
 }
 
-/* LANDMARK: Casket Modal (add/edit) */
+/* LANDMARK: Casket Modal (Add/Edit) — only Target is editable; checkboxes aligned */
 function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   mode: "add"|"edit";
   row?: Casket;
@@ -207,8 +223,6 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   const [jewish, setJewish] = useState<boolean>(row?.jewish ?? false);
   const [green, setGreen] = useState<boolean>(row?.green ?? false);
   const [target, setTarget] = useState<string>((row?.target_qty ?? 0).toString());
-  const [onHand, setOnHand] = useState<string>((row?.on_hand ?? 0).toString());
-  const [onOrder, setOnOrder] = useState<string>((row?.on_order ?? 0).toString());
 
   async function save() {
     const payload = {
@@ -222,8 +236,7 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
       int_height_in: intH ? Number(intH) : null,
       material, jewish, green,
       target_qty: Number(target) || 0,
-      on_hand: Number(onHand) || 0,
-      on_order: Number(onOrder) || 0,
+      // on_hand / on_order are NOT editable here
     };
     const url = mode==="add" ? "/api/caskets" : `/api/caskets/${row!.id}`;
     const method = mode==="add" ? "POST" : "PATCH";
@@ -260,13 +273,49 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
               <option>Wood</option><option>Metal</option><option>Green Burial</option>
             </select>
           </div>
-          <label className="flex items-end gap-2"><input type="checkbox" className="accent-emerald-400" checked={jewish} onChange={e=>setJewish(e.target.checked)} /><span className="text-sm">Jewish</span></label>
-          <label className="flex items-end gap-2"><input type="checkbox" className="accent-emerald-400" checked={green} onChange={e=>setGreen(e.target.checked)} /><span className="text-sm">Green</span></label>
-          <div className="space-y-1"><div className="label-xs">Target Qty</div><Input className="input-sm" value={target} onChange={e=>setTarget(e.target.value)} /></div>
-          <div className="space-y-1"><div className="label-xs">On Hand</div><Input className="input-sm" value={onHand} onChange={e=>setOnHand(e.target.value)} /></div>
-          <div className="space-y-1"><div className="label-xs">On Order</div><Input className="input-sm" value={onOrder} onChange={e=>setOnOrder(e.target.value)} /></div>
+
+          {/* LANDMARK: side-by-side checkboxes */}
+          <div className="col-span-2 flex gap-6 mt-1">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" className="accent-emerald-400" checked={jewish} onChange={e=>setJewish(e.target.checked)} />
+              <span className="text-sm">Jewish</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" className="accent-emerald-400" checked={green} onChange={e=>setGreen(e.target.checked)} />
+              <span className="text-sm">Green</span>
+            </label>
+          </div>
+
+          <div className="space-y-1">
+            <div className="label-xs">Target Qty</div>
+            <Input className="input-sm" value={target} onChange={e=>setTarget(e.target.value)} />
+          </div>
         </div>
         <div className="mt-4 flex justify-end"><Button onClick={save}>Save</Button></div>
+      </HoloPanel>
+    </div>
+  );
+}
+
+/* LANDMARK: Adjust On‑Hand Modal (delta +/-) */
+function AdjustOnHandModal({ row, onClose, onSaved }:{
+  row: Casket; onClose:()=>void; onSaved:(delta:number)=>void;
+}) {
+  const [delta, setDelta] = useState<string>("0");
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+      <HoloPanel railColor="emerald" className="w-full max-w-md">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-white/90">Adjust On‑Hand — {row.name}</div>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </div>
+        <div className="space-y-1">
+          <div className="label-xs">Delta (use negative to decrease)</div>
+          <Input className="input-sm" value={delta} onChange={e=>setDelta(e.target.value)} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button onClick={()=>onSaved(Number(delta)||0)}>Apply</Button>
+        </div>
       </HoloPanel>
     </div>
   );
