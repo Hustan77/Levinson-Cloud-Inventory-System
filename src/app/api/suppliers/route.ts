@@ -7,3 +7,13 @@ export async function GET() {
   if (error) return new NextResponse(error.message, { status: 500 });
   return NextResponse.json(data ?? [], { status: 200 });
 }
+
+export async function POST(req: Request) {
+  const sb = supabaseServer();
+  const body = await req.json();
+  const { name, ordering_instructions } = body ?? {};
+  if (!name) return new NextResponse("name is required", { status: 400 });
+  const { data, error } = await sb.from("suppliers").insert({ name, ordering_instructions: ordering_instructions ?? null }).select("*").single();
+  if (error) return new NextResponse(error.message, { status: 500 });
+  return NextResponse.json(data, { status: 201 });
+}

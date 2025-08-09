@@ -1,12 +1,10 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/caskets/route": "app/api/caskets/route.js",
-  "/api/orders/[id]/arrive/route": "app/api/orders/[id]/arrive/route.js",
   "/api/orders/route": "app/api/orders/route.js",
-  "/api/suppliers/route": "app/api/suppliers/route.js",
+  "/api/caskets/route": "app/api/caskets/route.js",
   "/api/urns/route": "app/api/urns/route.js",
-  "/caskets/page": "app/caskets/page.js",
+  "/api/suppliers/route": "app/api/suppliers/route.js",
   "/page": "app/page.js",
-  "/suppliers/page": "app/suppliers/page.js",
-  "/urns/page": "app/urns/page.js"
+  "/caskets/page": "app/caskets/page.js",
+  "/urns/page": "app/urns/page.js",
+  "/suppliers/page": "app/suppliers/page.js"
 }

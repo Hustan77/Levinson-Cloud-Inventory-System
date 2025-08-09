@@ -3,32 +3,30 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "../../../../../lib/supabaseServer";
 import { ArriveSchema } from "../../../../../lib/types";
 
-// NOTE: With Next 15 + typedRoutes, avoid typing the 2nd arg explicitly.
-// Let Next infer { params } to satisfy the route handler type.
 export async function PATCH(req: Request, { params }: { params: any }) {
   const sb = supabaseServer();
-
-  // LANDMARK: parse and validate id
   const id = Number(params.id);
-  if (!Number.isFinite(id)) {
-    return new NextResponse("Invalid id", { status: 400 });
-  }
+  if (!Number.isFinite(id)) return new NextResponse("Invalid id", { status: 400 });
 
-  // LANDMARK: validate body with Zod
   const body = await req.json();
   const parsed = ArriveSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+
+  const cur = await sb.from("orders").select("expected_date").eq("id", id).single();
+  if (cur.error) return new NextResponse(cur.error.message, { status: 404 });
+
+  const expected_date = cur.data?.expected_date ?? new Date().toISOString().slice(0,10);
   const { received_by, arrived_at } = parsed.data;
 
-  // LANDMARK: update order to ARRIVED
   const { data, error } = await sb
     .from("orders")
     .update({
       status: "ARRIVED",
       received_by,
       arrived_at: arrived_at ?? new Date().toISOString(),
+      expected_date,
+      backordered: false,
+      tbd_expected: false
     })
     .eq("id", id)
     .select("*")
