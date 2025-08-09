@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * LANDMARK: OrderCard — bottom action bar (icons no longer overlap text)
- * - Urgency colors via StatusPill
- * - Actions row at bottom: Mark Delivered, Details
+ * LANDMARK: OrderCard — bottom action bar (fixed clickability) + order urgency
+ * - Buttons use pointer-events-auto and explicit type="button".
+ * - StatusPill gets expectedDate to decide urgency (today/late only).
  */
 
 import React from "react";
@@ -12,7 +12,6 @@ import type { Casket, Supplier, Urn, VOrderEnriched } from "../../lib/types";
 import { Button } from "./ui/button";
 import { StatusPill } from "./StatusPill";
 
-// Icons (no extra deps)
 const IconTruck = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
     <path d="M3 7h11v7h7v3h-1a2 2 0 1 1-4 0H8a2 2 0 1 1-4 0H3V7zm11 2v2h4l-2-2h-2z" fill="currentColor"/>
@@ -66,17 +65,17 @@ export function OrderCard({
     }
   })();
 
-  const urgency: "low"|"med"|"high" = order.status === "BACKORDERED"
-    ? "high"
-    : order.expected_date
-      ? "med"
-      : "low";
-
   return (
-    <HoloPanel railColor={rail} className="relative min-h-[170px] flex flex-col">
+    <HoloPanel railColor={rail} className="relative min-h-[176px] flex flex-col">
       {/* LANDMARK: Header */}
       <div className="flex items-start justify-between">
-        <StatusPill status={order.status} backordered={order.backordered} tbd={order.tbd_expected} urgency={urgency} />
+        <StatusPill
+          status={order.status}
+          backordered={order.backordered}
+          tbd={order.tbd_expected}
+          expectedDate={order.expected_date ?? null} // urgency only when due today/late
+          kind="order"
+        />
         <div className="text-xs text-white/50">PO #{order.po_number}</div>
       </div>
 
@@ -104,21 +103,25 @@ export function OrderCard({
         </div>
       </div>
 
-      {/* LANDMARK: Bottom actions bar (no overlap with text) */}
-      <div className="mt-auto pt-3 flex items-center justify-between border-t border-white/10">
-        <Button variant="outline" onClick={onRefresh}>Refresh</Button>
-        <div className="flex gap-2">
+      {/* LANDMARK: Bottom actions bar — guaranteed clickable */}
+      <div className="mt-auto pt-3 flex items-center justify-between border-t border-white/10 relative z-10">
+        <Button variant="outline" onClick={onRefresh} type="button">Refresh</Button>
+        <div className="flex gap-2 pointer-events-auto">
           <button
-            type="button" title="Details" aria-label="Details"
+            type="button"
+            title="Details"
+            aria-label="Details"
             onClick={() => onDetails?.(order)}
-            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm"
+            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
           >
             <IconInfo className="text-white/80" /> Details
           </button>
           <button
-            type="button" title="Mark delivered" aria-label="Mark delivered"
+            type="button"
+            title="Mark delivered"
+            aria-label="Mark delivered"
             onClick={() => onMarkDelivered?.(order)}
-            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm"
+            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
           >
             <IconTruck className="text-emerald-300" /> Delivered
           </button>

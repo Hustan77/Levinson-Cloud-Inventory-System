@@ -6,7 +6,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import type { Casket, Supplier } from "../../lib/types";
 
-// icons
 const IconEdit = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"/><path d="M20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>);
 const IconAdjust = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M11 11V3h2v8h8v2h-8v8h-2v-8H3v-2h8z" fill="currentColor"/></svg>);
 const IconTrash = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" fill="currentColor"/></svg>);
@@ -17,7 +16,6 @@ type Filters = {
   jewish: "" | "yes" | "no";
   green: "" | "yes" | "no";
   q: string;
-  // dims
   minEW?: string; maxEW?: string; minEL?: string; maxEL?: string; minEH?: string; maxEH?: string;
   minIW?: string; maxIW?: string; minIL?: string; maxIL?: string; minIH?: string; maxIH?: string;
 };
@@ -70,6 +68,23 @@ export default function CasketsPage() {
   function shortBy(r: any){ return Math.max(0, (r.target_qty ?? 0) - available(r)); }
   function isFull(r: any){ return available(r) >= (r.target_qty ?? 0); }
 
+  function InventoryBadge({r}:{r:any}) {
+    const full = isFull(r);
+    const none = (r.on_hand ?? 0) === 0;
+    const short = !full && !none;
+    const label = none ? "RED ALERT: None on hand"
+      : short ? `SHORT by ${shortBy(r)}`
+      : "FULL";
+    const color = none ? "text-rose-300 border-rose-400/50 shadow-[0_0_22px_rgba(244,63,94,0.55)]"
+      : short ? "text-amber-300 border-amber-400/50 shadow-[0_0_18px_rgba(251,191,36,0.45)]"
+      : "text-emerald-300 border-emerald-400/40 shadow-[0_0_14px_rgba(16,185,129,0.35)]";
+    return (
+      <span className={`inline-flex items-center px-2 h-6 rounded-md border bg-white/5 text-xs ${color}`}>
+        {label}
+      </span>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -110,8 +125,11 @@ export default function CasketsPage() {
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {filtered.map(row=>(
-          <HoloPanel key={row.id} railColor="purple" className="min-h-[220px] flex flex-col">
-            <div className="text-white/90">{row.name}</div>
+          <HoloPanel key={row.id} railColor="purple" className="min-h-[228px] flex flex-col">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-white/90 truncate">{row.name}</div>
+              <InventoryBadge r={row}/>
+            </div>
             <div className="text-xs text-white/60 mt-1">
               Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}
             </div>
@@ -129,13 +147,10 @@ export default function CasketsPage() {
             <div className="mt-2 text-xs space-y-0.5">
               <div>Target: <b>{row.target_qty}</b></div>
               <div>On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order_live}</b> • Backorders: <b className="text-rose-300">{row.backordered_live}</b></div>
-              <div className={isFull(row) ? "text-emerald-300" : (row.on_hand===0 || row.backordered_live>0) ? "text-rose-300" : "text-amber-300"}>
-                {isFull(row) ? "Full" : row.on_hand===0 ? "None on hand" : `Short by ${shortBy(row)}`}
-              </div>
             </div>
 
-            {/* Bottom actions */}
-            <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10">
+            {/* Bottom actions — pointer-events-auto to ensure clicks */}
+            <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10 relative z-10 pointer-events-auto">
               <IconBtn title="Edit" onClick={()=>setOpenModal({mode:"edit", row})}><IconEdit className="text-white/80"/></IconBtn>
               <IconBtn title="Adjust on‑hand" onClick={()=>setAdjusting(row)}><IconAdjust className="text-emerald-300"/></IconBtn>
               <IconBtn title="Delete" onClick={async ()=>{
@@ -176,8 +191,13 @@ function Dim({label,min,max,onMin,onMax}:{label:string;min?:string;max?:string;o
 }
 function IconBtn({title, onClick, children}:{title:string; onClick:()=>void; children:React.ReactNode;}){
   return (
-    <button title={title} aria-label={title} onClick={onClick}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 hover:bg-white/10 border border-white/10">
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex h-8 px-2 items-center justify-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+    >
       {children}
     </button>
   );
