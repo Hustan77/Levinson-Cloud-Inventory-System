@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * LANDMARK: OrderCard — bottom action bar (fixed clickability) + order urgency
- * - Buttons use pointer-events-auto and explicit type="button".
- * - StatusPill gets expectedDate to decide urgency (today/late only).
+ * LANDMARK: OrderCard — icon actions, no Refresh, urgency only on due today/late
  */
 
 import React from "react";
 import { HoloPanel } from "./HoloPanel";
-import type { Casket, Supplier, Urn, VOrderEnriched } from "../../lib/types";
-import { Button } from "./ui/button";
+import type { Casket, Supplier, Urn, VOrderEnriched } from "@/lib/types";
 import { StatusPill } from "./StatusPill";
 
 const IconTruck = (props: React.SVGProps<SVGSVGElement>) => (
@@ -33,15 +30,15 @@ function railFor(status: VOrderEnriched["status"]) {
 }
 
 export function OrderCard({
-  order, suppliers, caskets, urns, onRefresh, onMarkDelivered, onDetails,
+  order, suppliers, caskets, urns, onMarkDelivered, onDetails, onRefresh, // onRefresh kept optional for caller, not rendered
 }: {
   order: VOrderEnriched;
   suppliers: Supplier[];
   caskets: Casket[];
   urns: Urn[];
-  onRefresh: () => void;
   onMarkDelivered?: (o: VOrderEnriched) => void;
   onDetails?: (o: VOrderEnriched) => void;
+  onRefresh?: () => void;
 }) {
   const rail = railFor(order.status);
   const supplierName =
@@ -103,30 +100,29 @@ export function OrderCard({
         </div>
       </div>
 
-      {/* LANDMARK: Bottom actions bar — guaranteed clickable */}
-      <div className="mt-auto pt-3 flex items-center justify-between border-t border-white/10 relative z-10">
-        <Button variant="outline" onClick={onRefresh} type="button">Refresh</Button>
-        <div className="flex gap-2 pointer-events-auto">
-          <button
-            type="button"
-            title="Details"
-            aria-label="Details"
-            onClick={() => onDetails?.(order)}
-            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-          >
-            <IconInfo className="text-white/80" /> Details
-          </button>
-          <button
-            type="button"
-            title="Mark delivered"
-            aria-label="Mark delivered"
-            onClick={() => onMarkDelivered?.(order)}
-            className="inline-flex h-8 px-2 items-center gap-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
-          >
-            <IconTruck className="text-emerald-300" /> Delivered
-          </button>
-        </div>
+      {/* LANDMARK: Bottom actions bar — icons only, guaranteed clickable */}
+      <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10 relative z-10 pointer-events-auto">
+        <IconBtn title="Details" onClick={() => onDetails?.(order)}>
+          <IconInfo className="text-white/80" />
+        </IconBtn>
+        <IconBtn title="Mark delivered" onClick={() => onMarkDelivered?.(order)}>
+          <IconTruck className="text-emerald-300" />
+        </IconBtn>
       </div>
     </HoloPanel>
+  );
+}
+
+function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode; }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+    >
+      {children}
+    </button>
   );
 }
