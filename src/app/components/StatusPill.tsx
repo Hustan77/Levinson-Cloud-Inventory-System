@@ -1,5 +1,6 @@
 import React from "react";
-import { Badge } from "../components/ui/badge";
+import { Badge } from "./ui/badge";
+
 
 export function StatusPill({ status }: { status: "PENDING"|"BACKORDERED"|"ARRIVED"|"SPECIAL" }) {
   const map = {

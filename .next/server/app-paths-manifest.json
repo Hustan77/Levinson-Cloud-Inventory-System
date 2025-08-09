@@ -1,3 +1,12 @@
 {
-  "/page": "app/page.js"
+  "/api/orders/[id]/arrive/route": "app/api/orders/[id]/arrive/route.js",
+  "/api/orders/route": "app/api/orders/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/caskets/route": "app/caskets/route.js",
+  "/suppliers/route": "app/suppliers/route.js",
+  "/urns/route": "app/urns/route.js",
+  "/caskets/page": "app/caskets/page.js",
+  "/page": "app/page.js",
+  "/suppliers/page": "app/suppliers/page.js",
+  "/urns/page": "app/urns/page.js"
 }

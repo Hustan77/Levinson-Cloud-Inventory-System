@@ -21,6 +21,15 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/lib/*": [
+        "./src/app/lib/*"
+      ],
+      "@/components/*": [
+        "./src/app/components/*"
+      ],
+      "@/components/ui/*": [
+        "./src/app/components/ui/*"
       ]
     },
     "types": [
@@ -37,7 +46,6 @@
     "next-env.d.ts",
     "src/**/*",
     "scripts/**/*",
-    "supabase/**/*",
     ".next/types/**/*.ts"
   ],
   "exclude": [

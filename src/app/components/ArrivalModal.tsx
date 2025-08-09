@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ArriveSchema, VOrderEnriched } from "@/lib/types";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { ArriveSchema, VOrderEnriched } from "../lib/types";
 
 export function ArrivalModal({
   order,
