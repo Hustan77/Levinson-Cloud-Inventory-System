@@ -1,15 +1,11 @@
 "use client";
 
 /**
- * LANDMARK: OrderModal — clear selection UX
- * - Big toggle: Casket | Urn | Special
- * - Searchable list for Casket/Urn; selected row shows cyan outline + checkmark
- * - Supplier auto-fills from the item and is read-only (shows supplier NAME)
- * - Special Order:
- *    · choose "From Catalog" (searchable list with highlight) OR "Custom Item"
- *    · supplier auto-fills from chosen catalog item; for Custom, choose supplier from dropdown
- * - Backordered: if checked → show "Expected date" or "TBD" + notes
- * - Create posts to /api/orders; after success, resets internal state and calls onCreated
+ * LANDMARK: OrderModal (Create Order)
+ * - Fixed center, max-h viewport, scrollable, z-[80]
+ * - Proper DialogTitle heading
+ * - Inline button only (no full-width bar)
+ * - Selection clarity: selected row highlighted + checkmark
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -23,7 +19,6 @@ type SpecialMode = "catalog" | "custom";
 export default function OrderModal({ onCreated }: { onCreated?: () => void | Promise<void> }) {
   const [open, setOpen] = useState(false);
 
-  // inventory lists (fetched here to decouple from page props)
   const [caskets, setCaskets] = useState<Casket[]>([]);
   const [urns, setUrns] = useState<Urn[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -38,7 +33,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
   const [backordered, setBackordered] = useState(false);
   const [notes, setNotes] = useState("");
 
-  // special-order toggles
   const [specialMode, setSpecialMode] = useState<SpecialMode>("catalog");
   const [customName, setCustomName] = useState("");
   const [customSupplierId, setCustomSupplierId] = useState<number | "">("");
@@ -57,7 +51,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
     })();
   }, [open]);
 
-  // Filtered lists by search
   const list = useMemo(() => {
     const term = q.trim().toLowerCase();
     const data = mode === "casket" || (mode === "special" && specialMode === "catalog") ? caskets : urns;
@@ -65,7 +58,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
     return data.filter((x) => x.name.toLowerCase().includes(term));
   }, [caskets, urns, mode, q, specialMode]);
 
-  // Selected supplier name/id
   const selectedItem = useMemo(() => {
     if (mode === "casket" || (mode === "special" && specialMode === "catalog")) {
       return caskets.find((c) => c.id === selectedId) ?? null;
@@ -98,7 +90,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
   }
 
   async function submit() {
-    // Basic validation
     if (!po.trim()) {
       alert("PO# is required");
       return;
@@ -126,21 +117,19 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
       payload.special_order = false;
       payload.status = backordered ? "BACKORDERED" : "PENDING";
     } else {
-      // special
       payload.status = "SPECIAL";
       payload.special_order = true;
-      payload.item_type = selectedId ? (specialMode === "catalog" ? "casket" : "urn") : "casket"; // default type
       if (specialMode === "catalog") {
         if (!selectedId) return alert("Pick an item from the catalog or switch to Custom");
-        // derive from whichever list is active; we used caskets list for special catalog (by design here)
         const picked = caskets.find((c) => c.id === selectedId) ?? urns.find((u) => u.id === selectedId);
+        payload.item_type = picked ? ("width_in" in (picked as any) ? "urn" : "casket") : "casket";
         payload.item_id = picked?.id ?? null;
         payload.item_name = picked?.name ?? null;
-        // supplier derived server-side from item_id via view; we still pass supplier_id for clarity if we have it
         payload.supplier_id = picked?.supplier_id ?? null;
       } else {
         if (!customName.trim()) return alert("Enter a custom item name");
         if (!customSupplierId) return alert("Choose a supplier");
+        payload.item_type = "casket"; // default classification (doesn’t affect inventory)
         payload.item_id = null;
         payload.item_name = customName.trim();
         payload.supplier_id = Number(customSupplierId);
@@ -175,10 +164,10 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => { setOpen(false); reset(); }} />
-          <div className="relative w-full max-w-3xl mx-4 rounded-2xl border border-white/10 bg-neutral-900/95 backdrop-blur-xl p-5 shadow-[0_0_40px_rgba(0,0,0,0.45)]">
-            {/* DialogTitle (accessibility) */}
+          <div className="relative w-full max-w-3xl mx-4 rounded-2xl border border-white/10 bg-neutral-900/95 backdrop-blur-xl p-5 shadow-[0_0_60px_rgba(0,0,0,0.6)] max-h-[90vh] overflow-auto">
+            {/* DialogTitle */}
             <h2 className="text-white/90 text-sm mb-3">Create Order</h2>
 
             {/* Mode tabs */}
@@ -277,7 +266,7 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
               </div>
             )}
 
-            {/* Supplier (read-only derived when applicable) */}
+            {/* Supplier derived */}
             <div className="grid md:grid-cols-3 gap-3 mb-3">
               <div>
                 <div className="label-xs">PO#</div>
@@ -328,7 +317,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
               </div>
             )}
 
-            {/* Actions */}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={()=>{ setOpen(false); reset(); }}>Cancel</Button>
               <Button type="button" onClick={submit} disabled={!po.trim() || (mode!=="special" && !selectedId) || (mode==="special" && specialMode==="custom" && (!customName.trim() || !customSupplierId))}>

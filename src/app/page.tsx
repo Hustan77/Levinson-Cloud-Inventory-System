@@ -2,24 +2,27 @@
 
 /**
  * LANDMARK: Dashboard
- * - Fixes ArrivalModal import (named export)
- * - Keeps OrderModal as default export
- * - Provides a lightweight EditOrder modal to handle the OrderCard "Edit" icon
- * - Hides ARRIVED orders on the dashboard (mixed lane)
+ * - Inline Create button (no full-width bar)
+ * - Link to "All Orders" page (/orders)
+ * - No fake quick-filter
+ * - Mixed order cards (non-arrived only)
+ * - Edit Order modal included
  */
 
 import React, { useEffect, useMemo, useState } from "react";
 import { HoloPanel } from "./components/HoloPanel";
 import { KpiTile } from "./components/KpiTile";
 import { OrderCard } from "./components/OrderCard";
-import { ArrivalModal } from "./components/ArrivalModal"; // ✅ named import
-import OrderModal from "./components/OrderModal"; // ✅ default import
+import { ArrivalModal } from "./components/ArrivalModal";
+import OrderModal from "./components/OrderModal";
+import Link from "next/link";
+import type { Route } from "next"; // LANDMARK: typedRoutes
+
 
 import type { VOrderEnriched, Supplier, Casket, Urn } from "@/lib/types";
-import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
 
-// Small inline modal component (accessible title included)
 function Modal({
   title,
   children,
@@ -43,13 +46,10 @@ function Modal({
 }
 
 export default function DashboardPage() {
-  // LANDMARK: data state
   const [orders, setOrders] = useState<VOrderEnriched[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [caskets, setCaskets] = useState<Casket[]>([]);
   const [urns, setUrns] = useState<Urn[]>([]);
-
-  // LANDMARK: modal state
   const [arriving, setArriving] = useState<VOrderEnriched | null>(null);
   const [editing, setEditing] = useState<VOrderEnriched | null>(null);
 
@@ -70,7 +70,6 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  // LANDMARK: KPIs
   const kpis = useMemo(() => {
     const casketCount = caskets.length;
     const urnCount = urns.length;
@@ -79,11 +78,7 @@ export default function DashboardPage() {
     return { casketCount, urnCount, supplierCount, activeOrders };
   }, [caskets, urns, suppliers, orders]);
 
-  // LANDMARK: Only non-arrived orders on dashboard
-  const active = useMemo(
-    () => orders.filter((o) => o.status !== "ARRIVED"),
-    [orders]
-  );
+  const active = useMemo(() => orders.filter((o) => o.status !== "ARRIVED"), [orders]);
 
   return (
     <div className="p-6 space-y-4">
@@ -95,18 +90,18 @@ export default function DashboardPage() {
         <KpiTile label="Active Orders" value={kpis.activeOrders} accent="emerald" />
       </div>
 
-      {/* LANDMARK: Create Order + Search */}
-      <HoloPanel railColor="cyan">
-        <div className="flex flex-wrap items-center gap-3">
-          <OrderModal onCreated={load} />
-          <div className="grow" />
-          <div className="w-full sm:w-auto">
-            <Input className="input-sm w-full" placeholder="(Optional) quick filter by PO, item, supplier — coming soon" disabled />
-          </div>
-        </div>
-      </HoloPanel>
+      {/* LANDMARK: Slim control row */}
+      <div className="flex flex-wrap items-center gap-3">
+        <OrderModal onCreated={load} />
+        <Link
+          href={"/orders" as Route} // LANDMARK: typed route
+          className="inline-flex h-9 px-3 items-center rounded-md border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+        >
 
-      {/* LANDMARK: Mixed order list (no columns) */}
+        </Link>
+      </div>
+
+      {/* LANDMARK: Mixed order grid */}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {active.map((o) => (
           <OrderCard
@@ -126,7 +121,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* LANDMARK: Mark Delivered modal */}
       {arriving && (
         <ArrivalModal
           order={arriving}
@@ -138,7 +132,6 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* LANDMARK: Edit Order modal (minimal but functional) */}
       {editing && (
         <EditOrderModal
           order={editing}
@@ -153,10 +146,7 @@ export default function DashboardPage() {
   );
 }
 
-/** LANDMARK: Minimal Edit Order modal
- * Edits: PO#, expected date, backordered + TBD, notes.
- * (Supplier/item are derived; full item change would be a separate flow.)
- */
+/** LANDMARK: Minimal Edit Order modal */
 function EditOrderModal({
   order,
   onClose,
@@ -212,9 +202,7 @@ function EditOrderModal({
                 checked={backordered}
                 onChange={(e) => {
                   setBackordered(e.target.checked);
-                  if (!e.target.checked) {
-                    setTbd(false);
-                  }
+                  if (!e.target.checked) setTbd(false);
                 }}
               />
               Backordered

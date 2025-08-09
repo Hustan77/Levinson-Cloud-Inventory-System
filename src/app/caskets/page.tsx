@@ -26,7 +26,21 @@ export default function CasketsPage() {
   const [filters, setFilters] = useState<Filters>({ supplier:"", material:"", jewish:"", green:"", q:"" });
   const [editRow, setEditRow] = useState<Casket | null>(null);
   const [adjustRow, setAdjustRow] = useState<Casket | null>(null);
-  const [formTarget, setFormTarget] = useState<number>(0);
+
+  // edit form fields
+  const [fName, setFName] = useState(""); 
+  const [fSupplier, setFSupplier] = useState<number| "">("");
+  const [fMaterial, setFMaterial] = useState<"WOOD"|"METAL"|"GREEN">("WOOD");
+  const [fJewish, setFJewish] = useState(false);
+  const [fGreen, setFGreen] = useState(false);
+  const [fExtW, setFExtW] = useState<string>("");
+  const [fExtL, setFExtL] = useState<string>("");
+  const [fExtH, setFExtH] = useState<string>("");
+  const [fIntW, setFIntW] = useState<string>("");
+  const [fIntL, setFIntL] = useState<string>("");
+  const [fIntH, setFIntH] = useState<string>("");
+  const [fTarget, setFTarget] = useState<string>("");
+
   const [formOnHand, setFormOnHand] = useState<number>(0);
 
   async function load(){
@@ -39,8 +53,23 @@ export default function CasketsPage() {
   useEffect(()=>{ load(); },[]);
 
   useEffect(()=>{
-    if(editRow){ setFormTarget(editRow.target_qty ?? 0); }
-    if(adjustRow){ setFormOnHand(adjustRow.on_hand ?? 0); }
+    if(editRow){
+      setFName(editRow.name ?? "");
+      setFSupplier(editRow.supplier_id ?? "");
+      setFMaterial((editRow.material as any) ?? "WOOD");
+      setFJewish(!!editRow.jewish);
+      setFGreen(!!editRow.green);
+      setFExtW(editRow.ext_width_in?.toString() ?? "");
+      setFExtL(editRow.ext_length_in?.toString() ?? "");
+      setFExtH(editRow.ext_height_in?.toString() ?? "");
+      setFIntW(editRow.int_width_in?.toString() ?? "");
+      setFIntL(editRow.int_length_in?.toString() ?? "");
+      setFIntH(editRow.int_height_in?.toString() ?? "");
+      setFTarget(editRow.target_qty?.toString() ?? "0");
+    }
+    if(adjustRow){
+      setFormOnHand(adjustRow.on_hand ?? 0);
+    }
   },[editRow,adjustRow]);
 
   const filtered = useMemo(()=>{
@@ -113,42 +142,32 @@ export default function CasketsPage() {
         </div>
       </HoloPanel>
 
-      {/* Cards: railColor becomes red and status text red when NONE ON HAND */}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {filtered.map(row=>{
           const none = (row.on_hand ?? 0) === 0;
           const rail = none ? "rose" : "purple";
           const full = isFull(row);
           const stat = full ? "FULL" : none ? "NONE ON HAND" : `SHORT by ${shortBy(row)}`;
-          const statStyle = none
-            ? "text-rose-300"
-            : full ? "text-emerald-300" : "text-amber-300";
+          const statStyle = none ? "text-rose-300" : full ? "text-emerald-300" : "text-amber-300";
           return (
-            <HoloPanel key={row.id} railColor={rail} className="min-h-[228px] pb-10 flex flex-col">
+            <HoloPanel key={row.id} railColor={rail} className="min-h-[244px] pb-10 flex flex-col">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-white/90 truncate">{row.name}</div>
                 <span className={`inline-flex items-center px-2 h-6 rounded-md border border-white/10 bg-white/5 text-xs ${statStyle}`}>{stat}</span>
               </div>
-              <div className="text-xs text-white/60 mt-1">
-                Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}
-              </div>
+              <div className="text-xs text-white/60 mt-1">Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}</div>
               <div className="text-xs text-white/60 mt-1 flex gap-3 flex-wrap">
                 <span>Material: {row.material}</span>
                 <span>{row.jewish ? "Jewish" : "Non‑Jewish"}</span>
                 <span>{row.green ? "Green" : "—"}</span>
               </div>
-              <div className="text-xs text-white/60 mt-1">
-                Ext: {row.ext_width_in ?? "—"}W × {row.ext_length_in ?? "—"}L × {row.ext_height_in ?? "—"}H
-              </div>
-              <div className="text-xs text-white/60">
-                Int: {row.int_width_in ?? "—"}W × {row.int_length_in ?? "—"}L × {row.int_height_in ?? "—"}H
-              </div>
+              <div className="text-xs text-white/60 mt-1">Ext: {row.ext_width_in ?? "—"}W × {row.ext_length_in ?? "—"}L × {row.ext_height_in ?? "—"}H</div>
+              <div className="text-xs text-white/60">Int: {row.int_width_in ?? "—"}W × {row.int_length_in ?? "—"}L × {row.int_height_in ?? "—"}H</div>
               <div className="mt-2 text-xs space-y-0.5">
                 <div>Target: <b>{row.target_qty}</b></div>
                 <div>On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order_live}</b> • Backorders: <b className="text-rose-300">{row.backordered_live}</b></div>
               </div>
 
-              {/* Bottom actions */}
               <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10 relative z-10 pointer-events-auto">
                 <IconBtn title="Edit" onClick={()=>setEditRow(row)}><IconEdit className="text-white/80"/></IconBtn>
                 <IconBtn title="Adjust on‑hand" onClick={()=>setAdjustRow(row)}><IconAdjust className="text-emerald-300"/></IconBtn>
@@ -164,7 +183,7 @@ export default function CasketsPage() {
         })}
       </div>
 
-      {/* Edit modal (target qty) */}
+      {/* Edit ALL FIELDS (except on-hand/on-order) */}
       {editRow !== null && (
         <Modal onClose={()=>setEditRow(null)} title={editRow.id ? "Edit Casket" : "Add Casket"}>
           <form className="space-y-3" onSubmit={async (e)=>{
@@ -172,16 +191,46 @@ export default function CasketsPage() {
             const id = editRow!.id;
             const method = id ? "PATCH" : "POST";
             const url = id ? `/api/caskets/${id}` : "/api/caskets";
-            const body = id
-              ? { target_qty: formTarget } 
-              : { name: prompt("Name?") ?? "", supplier_id: Number(prompt("Supplier ID?") ?? "0") || null, material: "WOOD", jewish: false, green: false, target_qty: formTarget, on_hand: 0 };
+            const body:any = {
+              name: fName.trim(),
+              supplier_id: fSupplier === "" ? null : Number(fSupplier),
+              material: fMaterial,
+              jewish: fJewish,
+              green: fGreen,
+              ext_width_in: fExtW ? Number(fExtW) : null,
+              ext_length_in: fExtL ? Number(fExtL) : null,
+              ext_height_in: fExtH ? Number(fExtH) : null,
+              int_width_in: fIntW ? Number(fIntW) : null,
+              int_length_in: fIntL ? Number(fIntL) : null,
+              int_height_in: fIntH ? Number(fIntH) : null,
+              target_qty: fTarget ? Number(fTarget) : 0,
+            };
             const res = await fetch(url, { method, headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
             if(!res.ok){ alert(await res.text()); return; }
-            setEditRow(null); load();
+            setEditRow(null); await load();
           }}>
-            <div>
-              <div className="label-xs">Target Quantity</div>
-              <Input className="input-sm" type="number" min={0} value={formTarget} onChange={e=>setFormTarget(Number(e.target.value))}/>
+            <div className="grid md:grid-cols-2 gap-3">
+              <Text label="Name" value={fName} onChange={setFName}/>
+              <Select label="Supplier" value={fSupplier} onChange={v=>setFSupplier(v)}>
+                <option value="">—</option>
+                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+              <Select label="Material" value={fMaterial} onChange={v=>setFMaterial(v as any)}>
+                <option value="WOOD">Wood</option><option value="METAL">Metal</option><option value="GREEN">Green</option>
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <Check label="Jewish" checked={fJewish} onChange={setFJewish}/>
+                <Check label="Green" checked={fGreen} onChange={setFGreen}/>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3">
+              <Num label="Ext Width (in)" value={fExtW} onChange={setFExtW}/>
+              <Num label="Ext Length (in)" value={fExtL} onChange={setFExtL}/>
+              <Num label="Ext Height (in)" value={fExtH} onChange={setFExtH}/>
+              <Num label="Int Width (in)" value={fIntW} onChange={setFIntW}/>
+              <Num label="Int Length (in)" value={fIntL} onChange={setFIntL}/>
+              <Num label="Int Height (in)" value={fIntH} onChange={setFIntH}/>
+              <Num label="Target Qty" value={fTarget} onChange={setFTarget}/>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={()=>setEditRow(null)}>Cancel</Button>
@@ -199,12 +248,9 @@ export default function CasketsPage() {
             const id = adjustRow!.id;
             const res = await fetch(`/api/caskets/${id}`, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ on_hand: formOnHand }) });
             if(!res.ok){ alert(await res.text()); return; }
-            setAdjustRow(null); load();
+            setAdjustRow(null); await load();
           }}>
-            <div>
-              <div className="label-xs">On‑hand</div>
-              <Input className="input-sm" type="number" min={0} value={formOnHand} onChange={e=>setFormOnHand(Number(e.target.value))}/>
-            </div>
+            <Num label="On‑hand" value={String(formOnHand)} onChange={(v)=>setFormOnHand(Number(v||"0"))}/>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={()=>setAdjustRow(null)}>Cancel</Button>
               <Button type="submit">Save</Button>
@@ -255,10 +301,29 @@ function Modal({ children, onClose, title }: { children: React.ReactNode; onClos
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 rounded-2xl border border-white/10 bg-neutral-900/90 backdrop-blur-xl p-4 shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+      <div className="relative w-full max-w-2xl mx-4 rounded-2xl border border-white/10 bg-neutral-900/90 backdrop-blur-xl p-4 shadow-[0_0_40px_rgba(0,0,0,0.45)] max-h-[90vh] overflow-auto">
         <h2 className="text-white/90 text-sm mb-3">{title}</h2>
         {children}
       </div>
+    </div>
+  );
+}
+function Text({label,value,onChange}:{label:string; value:string; onChange:(v:string)=>void;}){
+  return (<div><div className="label-xs">{label}</div><Input className="input-sm" value={value} onChange={e=>onChange(e.target.value)}/></div>);
+}
+function Num({label,value,onChange}:{label:string; value:string; onChange:(v:string)=>void;}){
+  return (<div><div className="label-xs">{label}</div><Input className="input-sm" type="number" value={value} onChange={e=>onChange(e.target.value)}/></div>);
+}
+function Check({label,checked,onChange}:{label:string; checked:boolean; onChange:(v:boolean)=>void;}){
+  return (<label className="inline-flex items-center gap-2 text-white/80 text-sm"><input type="checkbox" className="accent-emerald-400" checked={checked} onChange={e=>onChange(e.target.checked)}/> {label}</label>);
+}
+function Select({label,value,onChange,children}:{label:string; value:any; onChange:(v:any)=>void; children:React.ReactNode;}){
+  return (
+    <div>
+      <div className="label-xs">{label}</div>
+      <select className="select-sm w-full text-white bg-white/5 border border-white/10 rounded-md" value={value as any} onChange={e=>onChange(e.target.value ? isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) : "")}>
+        {children}
+      </select>
     </div>
   );
 }
