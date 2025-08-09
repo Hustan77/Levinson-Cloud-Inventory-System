@@ -61,6 +61,18 @@ export default function CasketsPage() {
     });
   }, [rows, filters]);
 
+  // LANDMARK: inventory helpers (backorders do NOT count towards availability)
+  function available(r: Casket) {
+    return (r.on_hand ?? 0) + (r.on_order ?? 0);
+  }
+  function shortBy(r: Casket) {
+    const tgt = r.target_qty ?? 0;
+    return Math.max(0, tgt - available(r));
+  }
+  function isFull(r: Casket) {
+    return available(r) >= (r.target_qty ?? 0);
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -72,58 +84,47 @@ export default function CasketsPage() {
       <HoloPanel railColor="cyan">
         <div className="text-xs text-white/60 mb-2">Filters</div>
         <div className="grid md:grid-cols-6 gap-2">
-          <div className="space-y-1">
-            <div className="label-xs">Supplier</div>
-            <select className="select-sm w-full" value={filters.supplier} onChange={e=>setFilters(f=>({...f, supplier: e.target.value? Number(e.target.value): ""}))}>
-              <option value="">Any</option>
-              {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="label-xs">Material</div>
-            <select className="select-sm w-full" value={filters.material} onChange={e=>setFilters(f=>({...f, material: e.target.value as any}))}>
-              <option value="">Any</option>
-              <option>Wood</option>
-              <option>Metal</option>
-              <option>Green Burial</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="label-xs">Jewish</div>
-            <select className="select-sm w-full" value={filters.jewish} onChange={e=>setFilters(f=>({...f, jewish: e.target.value as any}))}>
-              <option value="">Any</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="label-xs">Green</div>
-            <select className="select-sm w-full" value={filters.green} onChange={e=>setFilters(f=>({...f, green: e.target.value as any}))}>
-              <option value="">Any</option>
-              <option value="yes">Green Only</option>
-              <option value="no">Exclude Green</option>
-            </select>
-          </div>
+          <LabeledSelect label="Supplier" value={filters.supplier} onChange={(v)=>setFilters(f=>({...f, supplier: v}))}>
+            <option value="">Any</option>
+            {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </LabeledSelect>
+
+          <LabeledSelect label="Material" value={filters.material} onChange={(v)=>setFilters(f=>({...f, material: v as any}))}>
+            <option value="">Any</option>
+            <option>Wood</option>
+            <option>Metal</option>
+            <option>Green Burial</option>
+          </LabeledSelect>
+
+          <LabeledSelect label="Jewish" value={filters.jewish} onChange={(v)=>setFilters(f=>({...f, jewish: v as any}))}>
+            <option value="">Any</option><option value="yes">Yes</option><option value="no">No</option>
+          </LabeledSelect>
+
+          <LabeledSelect label="Green" value={filters.green} onChange={(v)=>setFilters(f=>({...f, green: v as any}))}>
+            <option value="">Any</option><option value="yes">Green Only</option><option value="no">Exclude Green</option>
+          </LabeledSelect>
+
           <div className="space-y-1">
             <div className="label-xs">Search</div>
             <Input className="input-sm" placeholder="Name..." value={filters.q} onChange={e=>setFilters(f=>({...f, q: e.target.value}))}/>
           </div>
         </div>
+
         {/* Dimensions */}
         <div className="grid md:grid-cols-6 gap-2 mt-3">
-          <Dim label="Ext Width"  min={filters.minEW} max={filters.maxEW} onMin={v=>setFilters(f=>({...f, minEW:v}))} onMax={v=>setFilters(f=>({...f, maxEW:v}))}/>
-          <Dim label="Ext Length" min={filters.minEL} max={filters.maxEL} onMin={v=>setFilters(f=>({...f, minEL:v}))} onMax={v=>setFilters(f=>({...f, maxEL:v}))}/>
-          <Dim label="Ext Height" min={filters.minEH} max={filters.maxEH} onMin={v=>setFilters(f=>({...f, minEH:v}))} onMax={v=>setFilters(f=>({...f, maxEH:v}))}/>
-          <Dim label="Int Width"  min={filters.minIW} max={filters.maxIW} onMin={v=>setFilters(f=>({...f, minIW:v}))} onMax={v=>setFilters(f=>({...f, maxIW:v}))}/>
-          <Dim label="Int Length" min={filters.minIL} max={filters.maxIL} onMin={v=>setFilters(f=>({...f, minIL:v}))} onMax={v=>setFilters(f=>({...f, maxIL:v}))}/>
-          <Dim label="Int Height" min={filters.minIH} max={filters.maxIH} onMin={v=>setFilters(f=>({...f, minIH:v}))} onMax={v=>setFilters(f=>({...f, maxIH:v}))}/>
+          <Dim label="Ext Width (in)"  min={filters.minEW} max={filters.maxEW} onMin={v=>setFilters(f=>({...f, minEW:v}))} onMax={v=>setFilters(f=>({...f, maxEW:v}))}/>
+          <Dim label="Ext Length (in)" min={filters.minEL} max={filters.maxEL} onMin={v=>setFilters(f=>({...f, minEL:v}))} onMax={v=>setFilters(f=>({...f, maxEL:v}))}/>
+          <Dim label="Ext Height (in)" min={filters.minEH} max={filters.maxEH} onMin={v=>setFilters(f=>({...f, minEH:v}))} onMax={v=>setFilters(f=>({...f, maxEH:v}))}/>
+          <Dim label="Int Width (in)"  min={filters.minIW} max={filters.maxIW} onMin={v=>setFilters(f=>({...f, minIW:v}))} onMax={v=>setFilters(f=>({...f, maxIW:v}))}/>
+          <Dim label="Int Length (in)" min={filters.minIL} max={filters.maxIL} onMin={v=>setFilters(f=>({...f, minIL:v}))} onMax={v=>setFilters(f=>({...f, maxIL:v}))}/>
+          <Dim label="Int Height (in)" min={filters.minIH} max={filters.maxIH} onMin={v=>setFilters(f=>({...f, minIH:v}))} onMax={v=>setFilters(f=>({...f, maxIH:v}))}/>
         </div>
       </HoloPanel>
 
-      {/* LANDMARK: Cards */}
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+      {/* LANDMARK: Cards grid */}
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {filtered.map(row => (
-          <HoloPanel key={row.id} railColor="purple">
+          <HoloPanel key={row.id} railColor="purple" className="min-h-[220px]">
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-white/90">{row.name}</div>
@@ -141,10 +142,12 @@ export default function CasketsPage() {
                 <div className="text-xs text-white/60">
                   Int: {row.int_width_in ?? "—"}W × {row.int_length_in ?? "—"}L × {row.int_height_in ?? "—"}H
                 </div>
-                <div className="mt-2 text-xs">
-                  Target: <b>{row.target_qty}</b> • On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order}</b> • Backorders: <b className="text-rose-300">{row.backordered_count}</b>
-                  <div className={(row.on_hand + row.on_order) >= row.target_qty ? "text-emerald-300" : "text-amber-300"}>
-                    {(row.on_hand + row.on_order) >= row.target_qty ? "Full" : `Short by ${Math.max(0, row.target_qty - (row.on_hand + row.on_order))}`}
+                {/* LANDMARK: Inventory math */}
+                <div className="mt-2 text-xs space-y-0.5">
+                  <div>Target: <b>{row.target_qty}</b></div>
+                  <div>On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order}</b> • Backorders: <b className="text-rose-300">{row.backordered_count}</b></div>
+                  <div className={isFull(row) ? "text-emerald-300" : "text-amber-300"}>
+                    {isFull(row) ? "Full" : `Short by ${shortBy(row)}`}
                   </div>
                 </div>
               </div>
@@ -192,10 +195,23 @@ export default function CasketsPage() {
   );
 }
 
+function LabeledSelect({
+  label, value, onChange, children
+}: { label:string; value:any; onChange:(v:any)=>void; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <div className="label-xs">{label}</div>
+      <select className="select-sm w-full" value={value as any} onChange={e=>onChange(e.target.value)}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
 function Dim({ label, min, max, onMin, onMax }: { label: string; min?: string; max?: string; onMin: (v:string)=>void; onMax:(v:string)=>void; }) {
   return (
     <div className="grid grid-cols-3 gap-1">
-      <div className="label-xs col-span-3">{label} (in)</div>
+      <div className="label-xs col-span-3">{label}</div>
       <Input className="input-sm" placeholder="Min" value={min ?? ""} onChange={e=>onMin(e.target.value)} />
       <div className="text-center text-xs text-white/40 self-center">–</div>
       <Input className="input-sm" placeholder="Max" value={max ?? ""} onChange={e=>onMax(e.target.value)} />
@@ -203,7 +219,7 @@ function Dim({ label, min, max, onMin, onMax }: { label: string; min?: string; m
   );
 }
 
-/* LANDMARK: Casket Modal (Add/Edit) — only Target is editable; checkboxes aligned */
+/* LANDMARK: Casket Modal (Add/Edit) — Target only editable; Jewish & Green side-by-side */
 function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   mode: "add"|"edit";
   row?: Casket;
@@ -236,7 +252,6 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
       int_height_in: intH ? Number(intH) : null,
       material, jewish, green,
       target_qty: Number(target) || 0,
-      // on_hand / on_order are NOT editable here
     };
     const url = mode==="add" ? "/api/caskets" : `/api/caskets/${row!.id}`;
     const method = mode==="add" ? "POST" : "PATCH";
@@ -246,7 +261,7 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/40">
       <HoloPanel railColor="purple" className="w-full max-w-2xl">
         <div className="flex items-center justify-between mb-2">
           <div className="text-white/90">{mode==="add" ? "Add Casket" : "Edit Casket"}</div>
@@ -274,7 +289,7 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
             </select>
           </div>
 
-          {/* LANDMARK: side-by-side checkboxes */}
+          {/* Checkboxes side-by-side */}
           <div className="col-span-2 flex gap-6 mt-1">
             <label className="flex items-center gap-2">
               <input type="checkbox" className="accent-emerald-400" checked={jewish} onChange={e=>setJewish(e.target.checked)} />
@@ -297,13 +312,12 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   );
 }
 
-/* LANDMARK: Adjust On‑Hand Modal (delta +/-) */
 function AdjustOnHandModal({ row, onClose, onSaved }:{
   row: Casket; onClose:()=>void; onSaved:(delta:number)=>void;
 }) {
   const [delta, setDelta] = useState<string>("0");
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/40">
       <HoloPanel railColor="emerald" className="w-full max-w-md">
         <div className="flex items-center justify-between mb-2">
           <div className="text-white/90">Adjust On‑Hand — {row.name}</div>

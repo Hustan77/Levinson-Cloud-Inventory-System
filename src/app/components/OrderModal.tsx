@@ -6,7 +6,6 @@ import { Input } from "./ui/input";
 import { HoloPanel } from "./HoloPanel";
 import type { Casket, Supplier, Urn, VOrderEnriched } from "../../lib/types";
 
-// LANDMARK: Props
 type Props = {
   mode?: "create" | "update";
   trigger?: React.ReactNode;
@@ -39,12 +38,11 @@ export function OrderModal({
   const [urns, setUrns] = useState<Urn[]>(pUrns ?? []);
   const [loading, setLoading] = useState(false);
 
-  // LANDMARK: form state
   const [itemType, setItemType] = useState<"casket"|"urn">(initial?.item_type ?? "casket");
   const [special, setSpecial] = useState<boolean>(initial?.status === "SPECIAL" || initial?.special_order === true || false);
-  const [useCatalogForSpecial, setUseCatalogForSpecial] = useState<boolean>(false); // special can pick a catalog item but will not affect inventory (we store its name only)
+  const [useCatalogForSpecial, setUseCatalogForSpecial] = useState<boolean>(false);
 
-  const [q, setQ] = useState(""); // dynamic search
+  const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(initial?.item_id ?? null);
   const [selectedName, setSelectedName] = useState<string>(initial?.item_name ?? "");
   const [supplierId, setSupplierId] = useState<number | null>(initial?.supplier_id ?? null);
@@ -55,7 +53,7 @@ export function OrderModal({
   const [tbd, setTbd] = useState<boolean>(initial?.tbd_expected ?? false);
   const [deceased, setDeceased] = useState<string>(initial?.deceased_name ?? "");
   const [needBy, setNeedBy] = useState<string>(initial?.need_by_date ?? "");
-  const [notes, setNotes] = useState<string>(initial?.notes ?? ""); // backorder/special notes
+  const [notes, setNotes] = useState<string>(initial?.notes ?? "");
 
   useEffect(() => {
     if (open && (!pSuppliers || !pCaskets || !pUrns)) {
@@ -70,7 +68,6 @@ export function OrderModal({
     }
   }, [open, pSuppliers, pCaskets, pUrns]);
 
-  // LANDMARK: dynamic search list
   const catalog = itemType === "casket" ? caskets : urns;
   const results = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -82,7 +79,6 @@ export function OrderModal({
     return rows.slice(0, 20);
   }, [catalog, q]);
 
-  // When selecting a normal item, supplier auto‑locks
   function pickItem(id: number) {
     setSelectedId(id);
     setSelectedName("");
@@ -90,9 +86,7 @@ export function OrderModal({
     setSupplierId(r?.supplier_id ?? null);
   }
 
-  // LANDMARK: open/close
   function openModal() {
-    // reset when opening in create mode
     if (mode === "create") {
       setItemType("casket");
       setSpecial(false);
@@ -113,7 +107,6 @@ export function OrderModal({
     setLoading(true);
     try {
       if (mode === "create") {
-        // SPECIAL rules
         const payload: any = {
           item_type: itemType,
           item_id: special ? null : selectedId,
@@ -137,7 +130,6 @@ export function OrderModal({
         onCreated?.();
         closeModal();
       } else {
-        // UPDATE (does not alter item selection here)
         const payload: any = {
           po_number: po || undefined,
           expected_date: backordered ? (tbd ? null : (expected || null)) : (expected || null),
@@ -156,12 +148,10 @@ export function OrderModal({
     }
   }
 
-  // VALIDITY
   const valid = useMemo(() => {
     if (!po) return false;
     if (special) {
       if (!needBy) return false;
-      // supplier optional for special orders
       return !!(useCatalogForSpecial ? (selectedId || selectedName) : (selectedName || selectedId));
     } else {
       if (!selectedId) return false;
@@ -179,7 +169,7 @@ export function OrderModal({
       )}
 
       {!open ? null : (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-black/40">
           <HoloPanel railColor="cyan" className="w-full max-w-3xl">
             {/* LANDMARK: Dialog Title (a11y) */}
             <div className="flex items-center justify-between mb-2">
@@ -188,7 +178,6 @@ export function OrderModal({
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
-              {/* LANDMARK: Type toggle + Special */}
               <div className="space-y-1">
                 <div className="label-xs">Item Type</div>
                 <div className="flex gap-2">
@@ -208,7 +197,7 @@ export function OrderModal({
                 <span className="text-sm">Special Order</span>
               </label>
 
-              {/* LANDMARK: Dynamic search / selection */}
+              {/* Normal path */}
               {!special && (
                 <>
                   <div className="space-y-1">
@@ -242,7 +231,7 @@ export function OrderModal({
                 </>
               )}
 
-              {/* LANDMARK: Special order path */}
+              {/* Special path */}
               {special && (
                 <>
                   <div className="space-y-1">
@@ -299,7 +288,7 @@ export function OrderModal({
                 </>
               )}
 
-              {/* LANDMARK: Backorder / Expected */}
+              {/* Backorder / Expected */}
               <div className="space-y-1">
                 <div className="label-xs">Backordered</div>
                 <label className="flex items-center gap-2">
@@ -319,7 +308,6 @@ export function OrderModal({
                 <Input className="input-sm" type="date" value={expected} onChange={e=>setExpected(e.target.value)} disabled={backordered && tbd} />
               </div>
 
-              {/* LANDMARK: PO + Deceased (special only) */}
               <div className="space-y-1">
                 <div className="label-xs">PO #</div>
                 <Input className="input-sm" value={po} onChange={e=>setPo(e.target.value)} />
@@ -332,13 +320,11 @@ export function OrderModal({
                 </div>
               )}
 
-              {/* LANDMARK: Notes */}
               <div className="space-y-1 md:col-span-2">
                 <div className="label-xs">Notes (backorder / special)</div>
                 <textarea className="w-full rounded-md bg-white/5 border border-white/10 p-2 text-sm" rows={3} value={notes} onChange={e=>setNotes(e.target.value)} />
               </div>
 
-              {/* Supplier instructions (if supplier known) */}
               {!!supplierId && (
                 <div className="md:col-span-2 text-xs text-emerald-300/80">
                   {suppliers.find(s=>s.id===supplierId)?.ordering_instructions ?? ""}

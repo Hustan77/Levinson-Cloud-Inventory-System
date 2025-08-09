@@ -38,8 +38,8 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, []);
 
+  // LANDMARK: Mixed list, newest first
   const mixed = useMemo(() => {
-    // Mix PENDING + BACKORDERED + SPECIAL, newest first
     return [...orders].sort((a, b) => (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }, [orders]);
 
@@ -72,12 +72,21 @@ export default function Dashboard() {
       <HoloPanel railColor="cyan">
         <div className="flex items-center justify-between">
           <div className="text-sm text-white/80">Create a new order</div>
+          {/* OrderModal renders a fixed overlay with very high z-index so it cannot sit behind cards */}
           <OrderModal onCreated={load} />
         </div>
       </HoloPanel>
 
-      {/* LANDMARK: Mixed order list */}
-      <div className="space-y-3">
+      {/* LANDMARK: Mixed order grid (uniform cards) */}
+      <div
+        className="
+          grid gap-3
+          grid-cols-1
+          sm:grid-cols-2
+          lg:grid-cols-3
+          2xl:grid-cols-4
+        "
+      >
         {mixed.map(o => (<OrderCard key={o.id} order={o} onRefresh={load} />))}
         {mixed.length === 0 && (
           <HoloPanel railColor="cyan"><div className="text-sm text-white/60">No active orders</div></HoloPanel>
