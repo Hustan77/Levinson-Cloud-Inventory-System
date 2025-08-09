@@ -1,19 +1,24 @@
 "use client";
 
+// LANDMARK: OrderModal — create/update orders
+// - Props for suppliers/caskets/urns are OPTIONAL; we self-fetch on open if missing.
+// - Supports both onDone and onCreated callbacks (both will fire if provided).
+// - Accessible: includes DialogTitle to satisfy Radix requirements.
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Casket, Supplier, Urn, CreateOrderInput } from "../../lib/types";
+import type { Casket, Supplier, Urn, CreateOrderInput } from "../../lib/types";
 
 type Mode = "create" | "update";
 
 type Props = {
-  mode?: Mode; // default create if not provided
-  trigger?: React.ReactNode; // if omitted, renders a default "Create Order" button (handy for dashboard)
-  suppliers: Supplier[];
-  caskets: Casket[];
-  urns: Urn[];
+  mode?: Mode; // default "create"
+  trigger?: React.ReactNode; // optional; default button if omitted
+  suppliers?: Supplier[]; // OPTIONAL (self-fetch on open if not provided)
+  caskets?: Casket[];     // OPTIONAL (self-fetch on open if not provided)
+  urns?: Urn[];           // OPTIONAL (self-fetch on open if not provided)
   orderId?: number;
   initial?: {
     item_type: "casket" | "urn";
@@ -27,7 +32,7 @@ type Props = {
     status: "PENDING" | "BACKORDERED" | "ARRIVED" | "SPECIAL";
     deceased_name: string | null;
   };
-  /** Older pages may pass onCreated; newer code uses onDone. We support both. */
+  // Legacy + current callbacks (we call both if present)
   onCreated?: () => void;
   onDone?: () => void;
 };
@@ -36,9 +41,9 @@ export function OrderModal(props: Props) {
   const {
     mode = "create",
     trigger,
-    suppliers,
-    caskets,
-    urns,
+    suppliers: suppliersProp,
+    caskets: casketsProp,
+    urns: urnsProp,
     initial,
     orderId,
     onCreated,
@@ -46,6 +51,41 @@ export function OrderModal(props: Props) {
   } = props;
 
   const [open, setOpen] = useState(false);
+
+  // LANDMARK: local copies for self-fetch when props are missing
+  const [suppliers, setSuppliers] = useState<Supplier[]>(suppliersProp ?? []);
+  const [caskets, setCaskets] = useState<Casket[]>(casketsProp ?? []);
+  const [urns, setUrns] = useState<Urn[]>(urnsProp ?? []);
+  const needSuppliers = suppliersProp == null;
+  const needCaskets = casketsProp == null;
+  const needUrns = urnsProp == null;
+
+  // Self-fetch lists when dialog opens and those lists were not injected
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        if (needSuppliers) {
+          const r = await fetch("/api/suppliers", { cache: "no-store" });
+          if (alive && r.ok) setSuppliers(await r.json());
+        }
+        if (needCaskets) {
+          const r = await fetch("/api/caskets", { cache: "no-store" });
+          if (alive && r.ok) setCaskets(await r.json());
+        }
+        if (needUrns) {
+          const r = await fetch("/api/urns", { cache: "no-store" });
+          if (alive && r.ok) setUrns(await r.json());
+        }
+      } catch {
+        /* ignore; UI validation will still run */
+      }
+    }
+    if (open) load();
+    return () => {
+      alive = false;
+    };
+  }, [open, needSuppliers, needCaskets, needUrns]);
 
   // LANDMARK: form state
   const [itemType, setItemType] = useState<"casket" | "urn">(initial?.item_type ?? "casket");
@@ -61,7 +101,7 @@ export function OrderModal(props: Props) {
   const [deceased, setDeceased] = useState<string>(initial?.deceased_name ?? "");
   const [specialSupplier, setSpecialSupplier] = useState<number | "">(initial?.supplier_id ?? "");
 
-  // Reset on close (clean form after cancel)
+  // Reset on close (clean form after cancel) to meet your UX rule
   useEffect(() => {
     if (!open) {
       setItemType(initial?.item_type ?? "casket");
@@ -80,24 +120,31 @@ export function OrderModal(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Use whichever lists are available (props first, then local)
+  const itemsCaskets = casketsProp ?? caskets;
+  const itemsUrns = urnsProp ?? urns;
+  const items = itemType === "casket" ? itemsCaskets : itemsUrns;
+  const allSuppliers = suppliersProp ?? suppliers;
+
   // derive supplier for non-special orders
   const derivedSupplierId = useMemo(() => {
     if (special) return specialSupplier === "" ? null : Number(specialSupplier);
     if (itemType === "casket") {
-      const found = caskets.find((c) => c.id === (itemId === "" ? -1 : Number(itemId)));
+      const found = itemsCaskets.find((c) => c.id === (itemId === "" ? -1 : Number(itemId)));
       return found?.supplier_id ?? null;
     }
-    const found = urns.find((u) => u.id === (itemId === "" ? -1 : Number(itemId)));
+    const found = itemsUrns.find((u) => u.id === (itemId === "" ? -1 : Number(itemId)));
     return found?.supplier_id ?? null;
-  }, [special, specialSupplier, itemType, itemId, caskets, urns]);
+  }, [special, specialSupplier, itemType, itemId, itemsCaskets, itemsUrns]);
 
   const supplierInstructions = useMemo(() => {
     const sid = derivedSupplierId;
     if (!sid) return null;
-    const s = suppliers.find((x) => x.id === sid);
+    const s = allSuppliers.find((x) => x.id === sid);
     return s?.ordering_instructions ?? null;
-  }, [derivedSupplierId, suppliers]);
+  }, [derivedSupplierId, allSuppliers]);
 
+  // LANDMARK: front-end validation (matches your business rules)
   const uiError = useMemo(() => {
     if (!po.trim()) return "PO# is required.";
     if (!special) {
@@ -155,7 +202,6 @@ export function OrderModal(props: Props) {
         return;
       }
       setOpen(false);
-      // support both callbacks
       onDone?.();
       onCreated?.();
       return;
@@ -182,18 +228,15 @@ export function OrderModal(props: Props) {
     onCreated?.();
   }
 
-  const items = itemType === "casket" ? caskets : urns;
-
-  const TriggerButton = trigger ?? (
-    <Button variant="default">Create Order</Button>
-  );
+  const TriggerButton = trigger ?? <Button variant="default">Create Order</Button>;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{TriggerButton}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Create Order" : "Update Order"}</DialogTitle>
+          {/* LANDMARK: DialogTitle to satisfy Radix accessibility requirement */}
+        <DialogTitle>{mode === "create" ? "Create Order" : "Update Order"}</DialogTitle>
         </DialogHeader>
 
         {/* LANDMARK: Order Type + Special */}
@@ -269,7 +312,7 @@ export function OrderModal(props: Props) {
                 }
               >
                 <option value="">—</option>
-                {suppliers.map((s) => (
+                {allSuppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
