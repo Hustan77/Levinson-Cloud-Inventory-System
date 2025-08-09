@@ -1,343 +1,291 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+/**
+ * LANDMARK: OrderModal — always on top (z handled by parent), clean, accessible
+ * - Wrapper does NOT use Radix; we render a panel with a backdrop (parent).
+ * - Title present to avoid dialog a11y warnings.
+ */
+
+import React, { useMemo, useState } from "react";
+import { HoloPanel } from "./HoloPanel";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { HoloPanel } from "./HoloPanel";
-import type { Casket, Supplier, Urn, VOrderEnriched } from "../../lib/types";
-
-type Props = {
-  mode?: "create" | "update";
-  trigger?: React.ReactNode;
-  orderId?: number;
-  initial?: Partial<VOrderEnriched>;
-  onCreated?: () => void;
-  onDone?: () => void;
-  suppliers?: Supplier[];
-  caskets?: Casket[];
-  urns?: Urn[];
-  triggerLabel?: string;
-};
+import type { Casket, Supplier, Urn } from "../../lib/types";
 
 export function OrderModal({
-  mode = "create",
-  trigger,
-  triggerLabel,
-  orderId,
-  initial,
+  suppliers,
+  caskets,
+  urns,
+  onClose,
   onCreated,
-  onDone,
-  suppliers: pSuppliers,
-  caskets: pCaskets,
-  urns: pUrns,
-}: Props) {
-  const [open, setOpen] = useState(false);
-
-  const [suppliers, setSuppliers] = useState<Supplier[]>(pSuppliers ?? []);
-  const [caskets, setCaskets] = useState<Casket[]>(pCaskets ?? []);
-  const [urns, setUrns] = useState<Urn[]>(pUrns ?? []);
-  const [loading, setLoading] = useState(false);
-
-  const [itemType, setItemType] = useState<"casket"|"urn">(initial?.item_type ?? "casket");
-  const [special, setSpecial] = useState<boolean>(initial?.status === "SPECIAL" || initial?.special_order === true || false);
-  const [useCatalogForSpecial, setUseCatalogForSpecial] = useState<boolean>(false);
-
+}: {
+  suppliers: Supplier[];
+  caskets: Casket[];
+  urns: Urn[];
+  onClose: () => void;
+  onCreated?: () => void;
+}) {
+  const [itemType, setItemType] = useState<"casket" | "urn" | "special">("casket");
   const [q, setQ] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(initial?.item_id ?? null);
-  const [selectedName, setSelectedName] = useState<string>(initial?.item_name ?? "");
-  const [supplierId, setSupplierId] = useState<number | null>(initial?.supplier_id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [customName, setCustomName] = useState("");
+  const [supplierId, setSupplierId] = useState<number | "">("");
+  const [po, setPo] = useState("");
+  const [backordered, setBackordered] = useState(false);
+  const [tbd, setTbd] = useState(false);
+  const [expected, setExpected] = useState<string>("");
+  const [deceased, setDeceased] = useState("");
+  const [notes, setNotes] = useState("");
 
-  const [po, setPo] = useState(initial?.po_number ?? "");
-  const [expected, setExpected] = useState<string>(initial?.expected_date ?? "");
-  const [backordered, setBackordered] = useState<boolean>(initial?.backordered ?? false);
-  const [tbd, setTbd] = useState<boolean>(initial?.tbd_expected ?? false);
-  const [deceased, setDeceased] = useState<string>(initial?.deceased_name ?? "");
-  const [needBy, setNeedBy] = useState<string>(initial?.need_by_date ?? "");
-  const [notes, setNotes] = useState<string>(initial?.notes ?? "");
+  const list = useMemo(() => {
+    const all = itemType === "casket" ? caskets : itemType === "urn" ? urns : [];
+    if (!q) return all;
+    const t = q.toLowerCase();
+    return all.filter((i) => i.name.toLowerCase().includes(t));
+  }, [q, itemType, caskets, urns]);
 
-  useEffect(() => {
-    if (open && (!pSuppliers || !pCaskets || !pUrns)) {
-      (async () => {
-        const [s, c, u] = await Promise.all([
-          fetch("/api/suppliers", { cache: "no-store" }).then(r => r.json()),
-          fetch("/api/caskets", { cache: "no-store" }).then(r => r.json()),
-          fetch("/api/urns", { cache: "no-store" }).then(r => r.json()),
-        ]);
-        setSuppliers(s); setCaskets(c); setUrns(u);
-      })();
+  const lockedSupplierName = useMemo(() => {
+    if (itemType === "special") return null;
+    const sid =
+      itemType === "casket"
+        ? caskets.find((x) => x.id === selectedId)?.supplier_id
+        : urns.find((x) => x.id === selectedId)?.supplier_id;
+    if (!sid) return null;
+    return suppliers.find((s) => s.id === sid)?.name ?? null;
+  }, [itemType, selectedId, caskets, urns, suppliers]);
+
+  async function submit() {
+    const payload: any = {
+      item_type: itemType === "special" ? (selectedId ? "casket" : "casket") : itemType, // keep enums stable
+      item_id: itemType === "special" ? selectedId : selectedId,
+      item_name: itemType === "special" ? (customName || null) : null,
+      supplier_id:
+        itemType === "special"
+          ? supplierId === "" ? null : Number(supplierId)
+          : itemType === "casket"
+          ? caskets.find((x) => x.id === selectedId)?.supplier_id
+          : urns.find((x) => x.id === selectedId)?.supplier_id,
+      po_number: po,
+      expected_date: backordered ? (tbd ? null : expected || null) : expected || null,
+      status:
+        itemType === "special"
+          ? "SPECIAL"
+          : backordered
+          ? "BACKORDERED"
+          : "PENDING",
+      backordered,
+      tbd_expected: backordered ? tbd : false,
+      special_order: itemType === "special",
+      deceased_name: itemType === "special" ? (deceased || null) : null,
+      notes: notes || null,
+    };
+
+    const res = await fetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
+    if (!res.ok) {
+      alert(await res.text());
+      return;
     }
-  }, [open, pSuppliers, pCaskets, pUrns]);
-
-  const catalog = itemType === "casket" ? caskets : urns;
-  const results = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    const rows = catalog.filter(r => {
-      if (!term) return true;
-      const base = `${r.name}`.toLowerCase();
-      return base.includes(term);
-    });
-    return rows.slice(0, 20);
-  }, [catalog, q]);
-
-  function pickItem(id: number) {
-    setSelectedId(id);
-    setSelectedName("");
-    const r = catalog.find(x => x.id === id);
-    setSupplierId(r?.supplier_id ?? null);
+    onCreated?.();
   }
 
-  function openModal() {
-    if (mode === "create") {
-      setItemType("casket");
-      setSpecial(false);
-      setUseCatalogForSpecial(false);
-      setQ(""); setSelectedId(null); setSelectedName("");
-      setSupplierId(null);
-      setPo(""); setExpected(""); setBackordered(false); setTbd(false);
-      setDeceased(""); setNeedBy(""); setNotes("");
-    }
-    setOpen(true);
-  }
+  // Supplier instructions
+  const supplierInstructions = useMemo(() => {
+    const id =
+      itemType === "special"
+        ? supplierId === "" ? null : Number(supplierId)
+        : itemType === "casket"
+        ? caskets.find((x) => x.id === selectedId)?.supplier_id ?? null
+        : urns.find((x) => x.id === selectedId)?.supplier_id ?? null;
+    if (!id) return null;
+    return suppliers.find((s) => s.id === id)?.ordering_instructions ?? null;
+  }, [itemType, supplierId, selectedId, caskets, urns, suppliers]);
 
-  function closeModal() {
-    setOpen(false);
-  }
+  const canSave =
+    !!po &&
+    ((itemType === "special" && !!supplierId) || (!!selectedId)) &&
+    (!backordered || tbd || !!expected);
 
-  async function save() {
-    setLoading(true);
-    try {
-      if (mode === "create") {
-        const payload: any = {
-          item_type: itemType,
-          item_id: special ? null : selectedId,
-          item_name: special ? (useCatalogForSpecial
-            ? (catalog.find(x => x.id === selectedId)?.name || selectedName || null)
-            : (selectedName || null)) : null,
-          supplier_id: supplierId,
-          po_number: po,
-          expected_date: backordered ? (tbd ? null : (expected || null)) : (expected || null),
-          backordered,
-          tbd_expected: backordered ? tbd : false,
-          special_order: special,
-          deceased_name: special ? (deceased || null) : null,
-          need_by_date: special ? (needBy || null) : null,
-          is_return: false,
-          return_reason: null,
-          notes: notes || null,
-        };
-        const res = await fetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
-        if (!res.ok) { alert(await res.text()); return; }
-        onCreated?.();
-        closeModal();
-      } else {
-        const payload: any = {
-          po_number: po || undefined,
-          expected_date: backordered ? (tbd ? null : (expected || null)) : (expected || null),
-          backordered,
-          tbd_expected: backordered ? tbd : false,
-          need_by_date: special ? (needBy || null) : undefined,
-          notes: notes || null,
-        };
-        const res = await fetch(`/api/orders/${orderId}`, { method: "PATCH", body: JSON.stringify(payload) });
-        if (!res.ok) { alert(await res.text()); return; }
-        onDone?.();
-        closeModal();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const valid = useMemo(() => {
-    if (!po) return false;
-    if (special) {
-      if (!needBy) return false;
-      return !!(useCatalogForSpecial ? (selectedId || selectedName) : (selectedName || selectedId));
-    } else {
-      if (!selectedId) return false;
-      if (!backordered && !expected) return false;
-      return true;
-    }
-  }, [po, special, needBy, selectedId, selectedName, backordered, expected, useCatalogForSpecial]);
+  // Reset on close needed? Parent closes wrapper; we keep self-contained.
 
   return (
-    <>
-      {trigger ? (
-        <span onClick={openModal}>{trigger}</span>
+    <HoloPanel railColor="purple" className="w-full max-w-3xl">
+      {/* LANDMARK: Title present for a11y */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-white/90 text-base">Create Order</div>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
+
+      {/* Type toggle */}
+      <div className="flex gap-2 mb-3">
+        <Button variant={itemType === "casket" ? "default" : "outline"} onClick={() => { setItemType("casket"); setSelectedId(null); setCustomName(""); setSupplierId(""); }}>
+          Casket
+        </Button>
+        <Button variant={itemType === "urn" ? "default" : "outline"} onClick={() => { setItemType("urn"); setSelectedId(null); setCustomName(""); setSupplierId(""); }}>
+          Urn
+        </Button>
+        <Button variant={itemType === "special" ? "default" : "outline"} onClick={() => { setItemType("special"); setSelectedId(null); }}>
+          Special
+        </Button>
+      </div>
+
+      {/* Search + list for casket/urn; OR special entry */}
+      {itemType !== "special" ? (
+        <div className="space-y-2">
+          <div className="grid md:grid-cols-3 gap-2">
+            <div className="space-y-1 md:col-span-2">
+              <div className="label-xs">Search Items</div>
+              <Input
+                placeholder={`Search ${itemType === "casket" ? "caskets" : "urns"}...`}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="label-xs">Supplier (auto)</div>
+              <Input disabled value={lockedSupplierName ?? ""} />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-auto rounded-md border border-white/10">
+            {list.length === 0 ? (
+              <div className="p-3 text-xs text-white/50">No matches.</div>
+            ) : (
+              <ul className="divide-y divide-white/10">
+                {list.map((i) => {
+                  const isSel = selectedId === i.id;
+                  return (
+                    <li
+                      key={i.id}
+                      className={`p-2 cursor-pointer text-sm hover:bg-white/5 ${isSel ? "bg-white/10" : ""}`}
+                      onClick={() => setSelectedId(i.id)}
+                    >
+                      {i.name}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
       ) : (
-        <Button onClick={openModal}>{triggerLabel ?? (mode === "create" ? "Create Order" : "Update")}</Button>
-      )}
-
-      {!open ? null : (
-        <div className="fixed inset-0 z-[200] grid place-items-center bg-black/40">
-          <HoloPanel railColor="cyan" className="w-full max-w-3xl">
-            {/* LANDMARK: Dialog Title (a11y) */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-white/90">{mode === "create" ? "Create Order" : "Update Order"}</div>
-              <Button variant="outline" onClick={closeModal}>Close</Button>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <div className="label-xs">Pick Catalog Item (optional)</div>
+            <select
+              className="select-sm w-full"
+              value={selectedId ?? ""}
+              onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">—</option>
+              <optgroup label="Caskets">
+                {caskets.map((c) => (
+                  <option key={`c-${c.id}`} value={c.id}>{c.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Urns">
+                {urns.map((u) => (
+                  <option key={`u-${u.id}`} value={u.id}>{u.name}</option>
+                ))}
+              </optgroup>
+            </select>
+            <div className="text-[11px] text-white/40">
+              If you choose a catalog item, inventory is not adjusted for special orders.
             </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="label-xs">Item Type</div>
-                <div className="flex gap-2">
-                  <label className="flex items-center gap-2">
-                    <input type="radio" name="itype" checked={itemType==="casket"} onChange={()=>{ setItemType("casket"); setSelectedId(null); setQ(""); }} />
-                    <span className="text-sm">Casket</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="radio" name="itype" checked={itemType==="urn"} onChange={()=>{ setItemType("urn"); setSelectedId(null); setQ(""); }} />
-                    <span className="text-sm">Urn</span>
-                  </label>
-                </div>
-              </div>
-
-              <label className="flex items-end gap-2">
-                <input type="checkbox" className="accent-purple-400" checked={special} onChange={e=>{ setSpecial(e.target.checked); }} />
-                <span className="text-sm">Special Order</span>
-              </label>
-
-              {/* Normal path */}
-              {!special && (
-                <>
-                  <div className="space-y-1">
-                    <div className="label-xs">Search {itemType === "casket" ? "Caskets" : "Urns"}</div>
-                    <Input className="input-sm" placeholder={`Type to search ${itemType}s...`} value={q} onChange={e=>setQ(e.target.value)} />
-                    <div className="max-h-40 overflow-auto mt-2 rounded-md border border-white/10 bg-white/[0.03]">
-                      {results.map(r => (
-                        <button
-                          key={r.id}
-                          onClick={()=>pickItem(r.id)}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 ${selectedId===r.id ? "bg-emerald-500/20" : ""}`}
-                        >
-                          <div className="text-white/90">{r.name}</div>
-                          <div className="text-white/50 text-xs">
-                            Supplier: {suppliers.find(s=>s.id===r.supplier_id)?.name ?? "—"}
-                          </div>
-                        </button>
-                      ))}
-                      {results.length===0 && <div className="px-3 py-2 text-white/50 text-sm">No matches.</div>}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="label-xs">Selected</div>
-                    <div className="text-sm">{selectedId ? (catalog.find(x=>x.id===selectedId)?.name) : "—"}</div>
-                    <div className="label-xs mt-3">Supplier (auto‑selected)</div>
-                    <div className="text-sm">
-                      {supplierId ? (suppliers.find(s=>s.id===supplierId)?.name ?? supplierId) : "—"}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Special path */}
-              {special && (
-                <>
-                  <div className="space-y-1">
-                    <div className="label-xs">Use Catalog Item (name only)</div>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={useCatalogForSpecial} onChange={e=>{ setUseCatalogForSpecial(e.target.checked); setSelectedId(null); setSelectedName(""); }} />
-                      <span className="text-sm">Pick from catalog but treat as Special (no inventory impact)</span>
-                    </label>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="label-xs">Supplier (optional)</div>
-                    <select className="select-sm w-full" value={supplierId ?? ""} onChange={e=>setSupplierId(e.target.value? Number(e.target.value): null)}>
-                      <option value="">—</option>
-                      {suppliers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                    </select>
-                  </div>
-
-                  {useCatalogForSpecial ? (
-                    <>
-                      <div className="space-y-1">
-                        <div className="label-xs">Search Catalog</div>
-                        <Input className="input-sm" placeholder={`Type to search ${itemType}s...`} value={q} onChange={e=>setQ(e.target.value)} />
-                        <div className="max-h-40 overflow-auto mt-2 rounded-md border border-white/10 bg-white/[0.03]">
-                          {results.map(r => (
-                            <button
-                              key={r.id}
-                              onClick={()=>{ setSelectedId(r.id); setSelectedName(r.name); }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 ${selectedId===r.id ? "bg-purple-500/20" : ""}`}
-                            >
-                              <div className="text-white/90">{r.name}</div>
-                              <div className="text-white/50 text-xs">Supplier: {suppliers.find(s=>s.id===r.supplier_id)?.name ?? "—"}</div>
-                            </button>
-                          ))}
-                          {results.length===0 && <div className="px-3 py-2 text-white/50 text-sm">No matches.</div>}
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="label-xs">Selected Name</div>
-                        <div className="text-sm">{selectedName || "—"}</div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="space-y-1 md:col-span-2">
-                      <div className="label-xs">Custom Item Name</div>
-                      <Input className="input-sm" value={selectedName} onChange={e=>setSelectedName(e.target.value)} placeholder="Type name..." />
-                    </div>
-                  )}
-
-                  <div className="space-y-1">
-                    <div className="label-xs">Need By (deadline)</div>
-                    <Input className="input-sm" type="date" value={needBy} onChange={e=>setNeedBy(e.target.value)} />
-                  </div>
-                </>
-              )}
-
-              {/* Backorder / Expected */}
-              <div className="space-y-1">
-                <div className="label-xs">Backordered</div>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="accent-rose-400" checked={backordered} onChange={e=>{ setBackordered(e.target.checked); if(!e.target.checked){ setTbd(false);} }} />
-                  <span className="text-sm">Mark as backordered</span>
-                </label>
-                {backordered && (
-                  <label className="flex items-center gap-2 mt-2">
-                    <input type="checkbox" className="accent-rose-400" checked={tbd} onChange={e=>setTbd(e.target.checked)} />
-                    <span className="text-sm">Expected date TBD</span>
-                  </label>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <div className="label-xs">Expected Delivery</div>
-                <Input className="input-sm" type="date" value={expected} onChange={e=>setExpected(e.target.value)} disabled={backordered && tbd} />
-              </div>
-
-              <div className="space-y-1">
-                <div className="label-xs">PO #</div>
-                <Input className="input-sm" value={po} onChange={e=>setPo(e.target.value)} />
-              </div>
-
-              {special && (
-                <div className="space-y-1">
-                  <div className="label-xs">Name of Deceased (optional)</div>
-                  <Input className="input-sm" value={deceased} onChange={e=>setDeceased(e.target.value)} />
-                </div>
-              )}
-
-              <div className="space-y-1 md:col-span-2">
-                <div className="label-xs">Notes (backorder / special)</div>
-                <textarea className="w-full rounded-md bg-white/5 border border-white/10 p-2 text-sm" rows={3} value={notes} onChange={e=>setNotes(e.target.value)} />
-              </div>
-
-              {!!supplierId && (
-                <div className="md:col-span-2 text-xs text-emerald-300/80">
-                  {suppliers.find(s=>s.id===supplierId)?.ordering_instructions ?? ""}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <Button disabled={!valid || loading} onClick={save}>{mode === "create" ? "Save Order" : "Save Changes"}</Button>
-            </div>
-          </HoloPanel>
+          </div>
+          <div className="space-y-1">
+            <div className="label-xs">Or enter a custom name</div>
+            <Input value={customName} onChange={(e) => setCustomName(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <div className="label-xs">Supplier</div>
+            <select
+              className="select-sm w-full"
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="">—</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="label-xs">Name of deceased (optional)</div>
+            <Input value={deceased} onChange={(e) => setDeceased(e.target.value)} />
+          </div>
         </div>
       )}
-    </>
+
+      {/* Shared fields */}
+      <div className="grid md:grid-cols-3 gap-3 mt-4">
+        <div className="space-y-1 md:col-span-1">
+          <div className="label-xs">PO #</div>
+          <Input value={po} onChange={(e) => setPo(e.target.value)} />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <div className="label-xs">Backordered</div>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="accent-rose-400"
+              checked={backordered}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setBackordered(v);
+                if (!v) { setTbd(false); }
+              }}
+            />
+            <span className="text-sm">Is backordered</span>
+          </label>
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <div className="label-xs">Expected</div>
+          {backordered ? (
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="accent-amber-400"
+                  checked={tbd}
+                  onChange={(e) => {
+                    setTbd(e.target.checked);
+                    if (e.target.checked) setExpected("");
+                  }}
+                />
+                <span className="text-sm">TBD</span>
+              </label>
+              <Input
+                type="date"
+                disabled={tbd}
+                value={expected}
+                onChange={(e) => setExpected(e.target.value)}
+              />
+            </div>
+          ) : (
+            <Input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
+          )}
+        </div>
+        <div className="space-y-1 md:col-span-3">
+            <div className="label-xs">Notes</div>
+            <textarea
+              className="w-full rounded-md bg-white/5 border border-white/10 p-2 text-sm outline-none focus:ring-2 focus:ring-cyan-400/60"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+        </div>
+      </div>
+
+      {/* Supplier instructions */}
+      {supplierInstructions && (
+        <div className="mt-3 text-xs text-white/60">
+          <span className="text-white/40">Supplier Instructions:</span> {supplierInstructions}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={!canSave} onClick={submit}>Save</Button>
+      </div>
+    </HoloPanel>
   );
 }
