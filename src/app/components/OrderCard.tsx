@@ -1,7 +1,10 @@
 "use client";
 
 /**
- * LANDMARK: OrderCard — icon actions, no Refresh, urgency only on due today/late
+ * LANDMARK: OrderCard — icons only
+ * - Left icon now means "Edit Order" (calls onEdit)
+ * - Right icon still "Mark delivered"
+ * - No Refresh button
  */
 
 import React from "react";
@@ -14,9 +17,9 @@ const IconTruck = (props: React.SVGProps<SVGSVGElement>) => (
     <path d="M3 7h11v7h7v3h-1a2 2 0 1 1-4 0H8a2 2 0 1 1-4 0H3V7zm11 2v2h4l-2-2h-2z" fill="currentColor"/>
   </svg>
 );
-const IconInfo = (props: React.SVGProps<SVGSVGElement>) => (
+const IconEditOrder = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
-    <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" fill="currentColor"/>
+    <path d="M4 4h7l2 2h7v14H4V4zm9 8H7v2h6v-2zm4-4H7v2h10V8z" fill="currentColor"/>
   </svg>
 );
 
@@ -30,15 +33,14 @@ function railFor(status: VOrderEnriched["status"]) {
 }
 
 export function OrderCard({
-  order, suppliers, caskets, urns, onMarkDelivered, onDetails, onRefresh, // onRefresh kept optional for caller, not rendered
+  order, suppliers, caskets, urns, onMarkDelivered, onEdit,
 }: {
   order: VOrderEnriched;
   suppliers: Supplier[];
   caskets: Casket[];
   urns: Urn[];
   onMarkDelivered?: (o: VOrderEnriched) => void;
-  onDetails?: (o: VOrderEnriched) => void;
-  onRefresh?: () => void;
+  onEdit?: (o: VOrderEnriched) => void;
 }) {
   const rail = railFor(order.status);
   const supplierName =
@@ -70,7 +72,7 @@ export function OrderCard({
           status={order.status}
           backordered={order.backordered}
           tbd={order.tbd_expected}
-          expectedDate={order.expected_date ?? null} // urgency only when due today/late
+          expectedDate={order.expected_date ?? null}
           kind="order"
         />
         <div className="text-xs text-white/50">PO #{order.po_number}</div>
@@ -100,10 +102,10 @@ export function OrderCard({
         </div>
       </div>
 
-      {/* LANDMARK: Bottom actions bar — icons only, guaranteed clickable */}
+      {/* LANDMARK: Bottom actions bar — icons only */}
       <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10 relative z-10 pointer-events-auto">
-        <IconBtn title="Details" onClick={() => onDetails?.(order)}>
-          <IconInfo className="text-white/80" />
+        <IconBtn title="Edit Order" onClick={() => onEdit?.(order)}>
+          <IconEditOrder className="text-white/80" />
         </IconBtn>
         <IconBtn title="Mark delivered" onClick={() => onMarkDelivered?.(order)}>
           <IconTruck className="text-emerald-300" />

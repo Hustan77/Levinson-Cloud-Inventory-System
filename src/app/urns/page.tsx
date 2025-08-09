@@ -1,12 +1,5 @@
 "use client";
 
-/**
- * LANDMARK: Urns page
- * - Bottom "drawer" red alert ONLY when on_hand === 0 and message "NONE ON HAND"
- * - Edit / Adjust modals wired and accessible (titles included)
- * - Category + Green filter; dimensions; bottom icon actions
- */
-
 import React, { useEffect, useMemo, useState } from "react";
 import { HoloPanel } from "../components/HoloPanel";
 import { Button } from "../components/ui/button";
@@ -71,6 +64,10 @@ export default function UrnsPage() {
     });
   },[rows,filters]);
 
+  function available(r:any){ return (r.on_hand ?? 0) + (r.on_order_live ?? 0); }
+  function shortBy(r:any){ return Math.max(0, (r.target_qty ?? 0) - available(r)); }
+  function isFull(r:any){ return available(r) >= (r.target_qty ?? 0); }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -106,16 +103,19 @@ export default function UrnsPage() {
       </HoloPanel>
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-        {filtered.map(row=>(
-          <div key={row.id} className="relative">
-            <HoloPanel railColor="purple" className="min-h-[208px] pb-10 flex flex-col">
+        {filtered.map(row=>{
+          const none = (row.on_hand ?? 0) === 0;
+          const rail = none ? "rose" : "purple";
+          const full = isFull(row);
+          const stat = full ? "FULL" : none ? "NONE ON HAND" : `SHORT by ${shortBy(row)}`;
+          const statStyle = none
+            ? "text-rose-300"
+            : full ? "text-emerald-300" : "text-amber-300";
+          return (
+            <HoloPanel key={row.id} railColor={rail} className="min-h-[208px] pb-10 flex flex-col">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-white/90 truncate">{row.name}</div>
-                <span className="inline-flex items-center px-2 h-6 rounded-md border border-white/10 bg-white/5 text-xs text-white/70">
-                  {(row.on_hand ?? 0) + (row.on_order_live ?? 0) >= (row.target_qty ?? 0) ? "FULL" :
-                    (row.on_hand ?? 0) === 0 ? "NONE ON HAND" :
-                    `SHORT by ${Math.max(0,(row.target_qty ?? 0) - ((row.on_hand ?? 0)+(row.on_order_live ?? 0)))}`}
-                </span>
+                <span className={`inline-flex items-center px-2 h-6 rounded-md border border-white/10 bg-white/5 text-xs ${statStyle}`}>{stat}</span>
               </div>
               <div className="text-xs text-white/60 mt-1">
                 Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}
@@ -143,19 +143,11 @@ export default function UrnsPage() {
                 }}><IconTrash className="text-rose-400"/></IconBtn>
               </div>
             </HoloPanel>
-
-            {(row.on_hand ?? 0) === 0 && (
-              <div className="absolute left-2 right-2 bottom-0 translate-y-1">
-                <div className="rounded-b-xl bg-rose-600/20 border border-rose-400/40 px-3 py-1.5 text-xs text-rose-200 shadow-[0_0_22px_rgba(244,63,94,0.55)]">
-                  NONE ON HAND
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Edit modal (target only) */}
+      {/* Edit modal (target) */}
       {editRow !== null && (
         <Modal onClose={()=>setEditRow(null)} title={editRow.id ? "Edit Urn" : "Add Urn"}>
           <form className="space-y-3" onSubmit={async (e)=>{
@@ -182,7 +174,7 @@ export default function UrnsPage() {
         </Modal>
       )}
 
-      {/* Adjust on-hand modal */}
+      {/* Adjust on-hand */}
       {adjustRow !== null && (
         <Modal onClose={()=>setAdjustRow(null)} title="Adjust On‑Hand">
           <form className="space-y-3" onSubmit={async (e)=>{
@@ -242,7 +234,6 @@ function IconBtn({title, onClick, children}:{title:string; onClick:()=>void; chi
     </button>
   );
 }
-
 function Modal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string; }){
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">

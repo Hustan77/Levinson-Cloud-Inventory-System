@@ -1,269 +1,366 @@
 "use client";
 
 /**
- * LANDMARK: OrderModal
- * - Toggle: Casket | Urn | Special
- * - Special: searchable picker over all products (caskets+urns) OR custom name
- * - Backorder controls: only enable TBD/date when Backordered is checked
- * - Supplier auto for normal orders; explicit for Special
+ * LANDMARK: OrderModal — clear selection UX
+ * - Big toggle: Casket | Urn | Special
+ * - Searchable list for Casket/Urn; selected row shows cyan outline + checkmark
+ * - Supplier auto-fills from the item and is read-only (shows supplier NAME)
+ * - Special Order:
+ *    · choose "From Catalog" (searchable list with highlight) OR "Custom Item"
+ *    · supplier auto-fills from chosen catalog item; for Custom, choose supplier from dropdown
+ * - Backordered: if checked → show "Expected date" or "TBD" + notes
+ * - Create posts to /api/orders; after success, resets internal state and calls onCreated
  */
 
-import React, { useMemo, useState } from "react";
-import { HoloPanel } from "./HoloPanel";
-import { Button } from "./ui/button";
+import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "./ui/input";
-import type { Casket, Supplier, Urn } from "../../lib/types";
+import { Button } from "./ui/button";
+import type { Casket, Supplier, Urn } from "@/lib/types";
 
-export function OrderModal({
-  suppliers, caskets, urns, onClose, onCreated,
-}: {
-  suppliers: Supplier[];
-  caskets: Casket[];
-  urns: Urn[];
-  onClose: () => void;
-  onCreated?: () => void;
-}) {
-  const [itemType, setItemType] = useState<"casket" | "urn" | "special">("casket");
+type Mode = "casket" | "urn" | "special";
+type SpecialMode = "catalog" | "custom";
+
+export default function OrderModal({ onCreated }: { onCreated?: () => void | Promise<void> }) {
+  const [open, setOpen] = useState(false);
+
+  // inventory lists (fetched here to decouple from page props)
+  const [caskets, setCaskets] = useState<Casket[]>([]);
+  const [urns, setUrns] = useState<Urn[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+
+  const [mode, setMode] = useState<Mode>("casket");
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [customName, setCustomName] = useState("");
-  const [supplierId, setSupplierId] = useState<number | "">("");
+
   const [po, setPo] = useState("");
-  const [backordered, setBackordered] = useState(false);
-  const [tbd, setTbd] = useState(false);
   const [expected, setExpected] = useState<string>("");
-  const [deceased, setDeceased] = useState("");
+  const [tbd, setTbd] = useState(false);
+  const [backordered, setBackordered] = useState(false);
   const [notes, setNotes] = useState("");
 
-  // Dynamic search for normal orders
+  // special-order toggles
+  const [specialMode, setSpecialMode] = useState<SpecialMode>("catalog");
+  const [customName, setCustomName] = useState("");
+  const [customSupplierId, setCustomSupplierId] = useState<number | "">("");
+
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      const [cs, us, ss] = await Promise.all([
+        fetch("/api/caskets").then((r) => r.json()),
+        fetch("/api/urns").then((r) => r.json()),
+        fetch("/api/suppliers").then((r) => r.json()),
+      ]);
+      setCaskets(cs ?? []);
+      setUrns(us ?? []);
+      setSuppliers(ss ?? []);
+    })();
+  }, [open]);
+
+  // Filtered lists by search
   const list = useMemo(() => {
-    const all = itemType === "casket" ? caskets : itemType === "urn" ? urns : [];
-    if (!q) return all;
-    const t = q.toLowerCase();
-    return all.filter((i) => i.name.toLowerCase().includes(t));
-  }, [q, itemType, caskets, urns]);
+    const term = q.trim().toLowerCase();
+    const data = mode === "casket" || (mode === "special" && specialMode === "catalog") ? caskets : urns;
+    if (!term) return data;
+    return data.filter((x) => x.name.toLowerCase().includes(term));
+  }, [caskets, urns, mode, q, specialMode]);
 
-  // Searchable combined list for "Special" (doesn't affect inventory)
-  const specialList = useMemo(() => {
-    const all = [
-      ...caskets.map(c => ({ id: c.id, name: c.name, type: "casket" as const })),
-      ...urns.map(u => ({ id: u.id, name: u.name, type: "urn" as const })),
-    ];
-    if (!q) return all.slice(0, 50);
-    const t = q.toLowerCase();
-    return all.filter(i => i.name.toLowerCase().includes(t)).slice(0, 50);
-  }, [q, caskets, urns]);
-
-  const lockedSupplierName = useMemo(() => {
-    if (itemType === "special") return null;
-    const sid =
-      itemType === "casket"
-        ? caskets.find((x) => x.id === selectedId)?.supplier_id
-        : urns.find((x) => x.id === selectedId)?.supplier_id;
-    if (!sid) return null;
-    return suppliers.find((s) => s.id === sid)?.name ?? null;
-  }, [itemType, selectedId, caskets, urns, suppliers]);
-
-  async function submit() {
-    const payload: any = {
-      item_type: itemType === "special"
-        ? (selectedId ? (specialList.find(s=>s.id===selectedId)?.type ?? "casket") : "casket")
-        : itemType,
-      item_id: selectedId,
-      item_name: itemType === "special" ? (customName || (selectedId ? (specialList.find(s=>s.id===selectedId)?.name ?? null) : null)) : null,
-      supplier_id:
-        itemType === "special"
-          ? (supplierId === "" ? null : Number(supplierId))
-          : itemType === "casket"
-          ? caskets.find((x) => x.id === selectedId)?.supplier_id
-          : urns.find((x) => x.id === selectedId)?.supplier_id,
-      po_number: po,
-      expected_date: backordered ? (tbd ? null : (expected || null)) : (expected || null),
-      status: itemType === "special" ? "SPECIAL" : (backordered ? "BACKORDERED" : "PENDING"),
-      backordered,
-      tbd_expected: backordered ? tbd : false,
-      special_order: itemType === "special",
-      deceased_name: itemType === "special" ? (deceased || null) : null,
-      notes: notes || null,
-    };
-
-    const res = await fetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
-    if (!res.ok) {
-      alert(await res.text());
-      return;
+  // Selected supplier name/id
+  const selectedItem = useMemo(() => {
+    if (mode === "casket" || (mode === "special" && specialMode === "catalog")) {
+      return caskets.find((c) => c.id === selectedId) ?? null;
+    } else if (mode === "urn") {
+      return urns.find((u) => u.id === selectedId) ?? null;
     }
-    onCreated?.();
+    return null;
+  }, [selectedId, mode, specialMode, caskets, urns]);
+
+  const supplierName = useMemo(() => {
+    const sid =
+      selectedItem?.supplier_id ??
+      (mode === "special" && specialMode === "custom" && customSupplierId ? Number(customSupplierId) : null);
+    if (!sid) return "";
+    return suppliers.find((s) => s.id === sid)?.name ?? "";
+  }, [selectedItem, suppliers, mode, specialMode, customSupplierId]);
+
+  function reset() {
+    setMode("casket");
+    setQ("");
+    setSelectedId(null);
+    setPo("");
+    setExpected("");
+    setTbd(false);
+    setBackordered(false);
+    setNotes("");
+    setSpecialMode("catalog");
+    setCustomName("");
+    setCustomSupplierId("");
   }
 
-  const supplierInstructions = useMemo(() => {
-    const id =
-      itemType === "special"
-        ? supplierId === "" ? null : Number(supplierId)
-        : itemType === "casket"
-        ? caskets.find((x) => x.id === selectedId)?.supplier_id ?? null
-        : urns.find((x) => x.id === selectedId)?.supplier_id ?? null;
-    if (!id) return null;
-    return suppliers.find((s) => s.id === id)?.ordering_instructions ?? null;
-  }, [itemType, supplierId, selectedId, caskets, urns, suppliers]);
+  async function submit() {
+    // Basic validation
+    if (!po.trim()) {
+      alert("PO# is required");
+      return;
+    }
+    const payload: any = {
+      po_number: po.trim(),
+      backordered,
+      tbd_expected: backordered ? tbd : false,
+      expected_date: backordered ? (tbd ? null : (expected || null)) : (expected || null),
+      notes: notes || null,
+      need_by_date: null,
+      is_return: false,
+    };
 
-  const canSave =
-    !!po &&
-    ((itemType === "special" && !!supplierId) || (!!selectedId || !!customName)) &&
-    (!backordered || tbd || !!expected);
+    if (mode === "casket") {
+      if (!selectedId) return alert("Pick a casket");
+      payload.item_type = "casket";
+      payload.item_id = selectedId;
+      payload.special_order = false;
+      payload.status = backordered ? "BACKORDERED" : "PENDING";
+    } else if (mode === "urn") {
+      if (!selectedId) return alert("Pick an urn");
+      payload.item_type = "urn";
+      payload.item_id = selectedId;
+      payload.special_order = false;
+      payload.status = backordered ? "BACKORDERED" : "PENDING";
+    } else {
+      // special
+      payload.status = "SPECIAL";
+      payload.special_order = true;
+      payload.item_type = selectedId ? (specialMode === "catalog" ? "casket" : "urn") : "casket"; // default type
+      if (specialMode === "catalog") {
+        if (!selectedId) return alert("Pick an item from the catalog or switch to Custom");
+        // derive from whichever list is active; we used caskets list for special catalog (by design here)
+        const picked = caskets.find((c) => c.id === selectedId) ?? urns.find((u) => u.id === selectedId);
+        payload.item_id = picked?.id ?? null;
+        payload.item_name = picked?.name ?? null;
+        // supplier derived server-side from item_id via view; we still pass supplier_id for clarity if we have it
+        payload.supplier_id = picked?.supplier_id ?? null;
+      } else {
+        if (!customName.trim()) return alert("Enter a custom item name");
+        if (!customSupplierId) return alert("Choose a supplier");
+        payload.item_id = null;
+        payload.item_name = customName.trim();
+        payload.supplier_id = Number(customSupplierId);
+      }
+    }
+
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      alert(`Failed: ${text}`);
+      return;
+    }
+
+    setOpen(false);
+    reset();
+    await onCreated?.();
+  }
 
   return (
-    <HoloPanel railColor="purple" className="w-full max-w-3xl">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-white/90 text-base">Create Order</div>
-        <Button variant="outline" onClick={onClose}>Close</Button>
-      </div>
+    <>
+      <button
+        type="button"
+        className="inline-flex items-center gap-2 px-3 h-9 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+        onClick={() => setOpen(true)}
+      >
+        + Create Order
+      </button>
 
-      {/* LANDMARK: Type toggle */}
-      <div className="flex gap-2 mb-3">
-        <Button variant={itemType === "casket" ? "default" : "outline"} onClick={() => { setItemType("casket"); setSelectedId(null); setCustomName(""); setSupplierId(""); }}>
-          Casket
-        </Button>
-        <Button variant={itemType === "urn" ? "default" : "outline"} onClick={() => { setItemType("urn"); setSelectedId(null); setCustomName(""); setSupplierId(""); }}>
-          Urn
-        </Button>
-        <Button variant={itemType === "special" ? "default" : "outline"} onClick={() => { setItemType("special"); setSelectedId(null); }}>
-          Special
-        </Button>
-      </div>
+      {open && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setOpen(false); reset(); }} />
+          <div className="relative w-full max-w-3xl mx-4 rounded-2xl border border-white/10 bg-neutral-900/95 backdrop-blur-xl p-5 shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+            {/* DialogTitle (accessibility) */}
+            <h2 className="text-white/90 text-sm mb-3">Create Order</h2>
 
-      {/* LANDMARK: Search areas */}
-      {itemType !== "special" ? (
-        <>
-          <div className="grid md:grid-cols-3 gap-2">
-            <div className="space-y-1 md:col-span-2">
-              <div className="label-xs">Search {itemType === "casket" ? "Caskets" : "Urns"}</div>
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type to search..." />
+            {/* Mode tabs */}
+            <div className="flex gap-2 mb-3">
+              <ModeTab active={mode==="casket"} onClick={()=>{setMode("casket"); setSpecialMode("catalog"); setSelectedId(null);}}>Casket</ModeTab>
+              <ModeTab active={mode==="urn"} onClick={()=>{setMode("urn"); setSpecialMode("catalog"); setSelectedId(null);}}>Urn</ModeTab>
+              <ModeTab active={mode==="special"} onClick={()=>{setMode("special"); setSelectedId(null);}}>Special</ModeTab>
             </div>
-            <div className="space-y-1">
-              <div className="label-xs">Supplier (auto)</div>
-              <Input disabled value={lockedSupplierName ?? ""} />
-            </div>
-          </div>
-          <div className="max-h-56 overflow-auto rounded-md border border-white/10 mt-2">
-            <ul className="divide-y divide-white/10">
-              {list.length === 0 ? (
-                <li className="p-2 text-xs text-white/50">No matches.</li>
-              ) : list.map(i => (
-                <li
-                  key={i.id}
-                  className={`p-2 cursor-pointer text-sm hover:bg-white/5 ${selectedId===i.id ? "bg-white/10" : ""}`}
-                  onClick={() => setSelectedId(i.id)}
-                >
-                  {i.name}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <div className="label-xs">Search Catalog (optional)</div>
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search caskets & urns..." />
-              <div className="max-h-48 overflow-auto rounded-md border border-white/10">
-                <ul className="divide-y divide-white/10">
-                  {specialList.length === 0 ? (
-                    <li className="p-2 text-xs text-white/50">No matches.</li>
-                  ) : specialList.map(i => (
-                    <li
-                      key={`${i.type}-${i.id}`}
-                      className={`p-2 cursor-pointer text-sm hover:bg-white/5 ${selectedId===i.id ? "bg-white/10" : ""}`}
-                      onClick={() => setSelectedId(i.id)}
-                    >
-                      [{i.type}] {i.name}
-                    </li>
-                  ))}
-                </ul>
+
+            {/* Special sub-toggle */}
+            {mode==="special" && (
+              <div className="flex gap-2 mb-3">
+                <ModeSubTab active={specialMode==="catalog"} onClick={()=>{setSpecialMode("catalog"); setSelectedId(null);}}>From Catalog</ModeSubTab>
+                <ModeSubTab active={specialMode==="custom"} onClick={()=>{setSpecialMode("custom"); setSelectedId(null);}}>Custom Item</ModeSubTab>
+              </div>
+            )}
+
+            {/* Search + list */}
+            {!(mode==="special" && specialMode==="custom") && (
+              <>
+                <div className="mb-2">
+                  <Input className="input-sm" value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Search items..." />
+                </div>
+                <div className="max-h-56 overflow-auto rounded-lg border border-white/10">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white/5 sticky top-0">
+                      <tr className="text-white/60">
+                        <th className="text-left font-normal px-3 py-2">Name</th>
+                        <th className="text-left font-normal px-3 py-2">Supplier</th>
+                        <th className="text-left font-normal px-3 py-2 w-16">Pick</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((row) => {
+                        const sid = (row as any).supplier_id;
+                        const sname = suppliers.find((s) => s.id === sid)?.name ?? "—";
+                        const selected = selectedId === row.id;
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`border-t border-white/5 ${selected ? "bg-cyan-900/30 outline outline-2 outline-cyan-400/60" : "hover:bg-white/5"}`}
+                          >
+                            <td className="px-3 py-2 text-white/90">{row.name}</td>
+                            <td className="px-3 py-2 text-white/60">{sname}</td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={()=>setSelectedId(row.id)}
+                                className={`h-7 w-7 inline-flex items-center justify-center rounded-md border ${selected ? "border-cyan-400/60 bg-cyan-400/10" : "border-white/10 bg-white/5 hover:bg-white/10"} focus:outline-none focus:ring-2 focus:ring-cyan-400/60`}
+                                aria-pressed={selected}
+                                aria-label="Select item"
+                              >
+                                {selected ? (
+                                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                                    <path d="M9 16.2l-3.5-3.5 1.4-1.4L9 13.4l7.1-7.1 1.4 1.4z" fill="currentColor"/>
+                                  </svg>
+                                ) : (
+                                  <span className="text-white/50">•</span>
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {list.length === 0 && (
+                        <tr>
+                          <td className="px-3 py-6 text-center text-white/50" colSpan={3}>No items match your search.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {/* Special custom form */}
+            {mode==="special" && specialMode==="custom" && (
+              <div className="grid md:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <div className="label-xs">Custom item name</div>
+                  <Input className="input-sm" value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="e.g., Special Mahogany 32x84" />
+                </div>
+                <div>
+                  <div className="label-xs">Supplier</div>
+                  <select
+                    className="select-sm w-full text-white bg-white/5 border border-white/10 rounded-md"
+                    value={customSupplierId as any}
+                    onChange={(e)=>setCustomSupplierId(e.target.value ? Number(e.target.value) : "")}
+                  >
+                    <option value="">Pick supplier…</option>
+                    {suppliers.map((s)=>(
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Supplier (read-only derived when applicable) */}
+            <div className="grid md:grid-cols-3 gap-3 mb-3">
+              <div>
+                <div className="label-xs">PO#</div>
+                <Input className="input-sm" value={po} onChange={e=>setPo(e.target.value)} />
+              </div>
+              <div>
+                <div className="label-xs">Supplier</div>
+                <Input className="input-sm" value={supplierName} readOnly placeholder="Auto from item / choose in Custom" />
+              </div>
+              <div>
+                <div className="label-xs">Backordered?</div>
+                <div className="h-9 flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 text-white/80 text-sm">
+                    <input type="checkbox" className="accent-rose-400" checked={backordered} onChange={(e)=>{ setBackordered(e.target.checked); if(!e.target.checked){ setTbd(false); setExpected(""); } }} />
+                    Backordered
+                  </label>
+                </div>
               </div>
             </div>
-            <div className="space-y-1">
-              <div className="label-xs">Or custom name</div>
-              <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Custom product name" />
-            </div>
-            <div className="space-y-1">
-              <div className="label-xs">Supplier</div>
-              <select className="select-sm w-full" value={supplierId} onChange={(e)=>setSupplierId(e.target.value? Number(e.target.value):"")}>
-                <option value="">—</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <div className="label-xs">Name of deceased (optional)</div>
-              <Input value={deceased} onChange={(e)=>setDeceased(e.target.value)} />
+
+            {backordered ? (
+              <div className="grid md:grid-cols-3 gap-3 mb-3">
+                <div>
+                  <div className="label-xs">Expected date</div>
+                  <Input className="input-sm" type="date" value={expected} onChange={e=>{ setExpected(e.target.value); setTbd(false); }} disabled={tbd}/>
+                </div>
+                <div className="flex items-end">
+                  <label className="inline-flex items-center gap-2 text-white/80 text-sm">
+                    <input type="checkbox" className="accent-rose-400" checked={tbd} onChange={(e)=>{ setTbd(e.target.checked); if(e.target.checked){ setExpected(""); } }} />
+                    TBD
+                  </label>
+                </div>
+                <div>
+                  <div className="label-xs">Notes</div>
+                  <Input className="input-sm" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Backorder notes…" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-3 gap-3 mb-3">
+                <div>
+                  <div className="label-xs">Expected date</div>
+                  <Input className="input-sm" type="date" value={expected} onChange={e=>setExpected(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <div className="label-xs">Notes</div>
+                  <Input className="input-sm" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional notes…" />
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={()=>{ setOpen(false); reset(); }}>Cancel</Button>
+              <Button type="button" onClick={submit} disabled={!po.trim() || (mode!=="special" && !selectedId) || (mode==="special" && specialMode==="custom" && (!customName.trim() || !customSupplierId))}>
+                Create
+              </Button>
             </div>
           </div>
-        </>
-      )}
-
-      {/* LANDMARK: Shared fields */}
-      <div className="grid md:grid-cols-3 gap-3 mt-4">
-        <div className="space-y-1">
-          <div className="label-xs">PO #</div>
-          <Input value={po} onChange={(e)=>setPo(e.target.value)} />
-        </div>
-        <div className="space-y-1">
-          <div className="label-xs">Backordered</div>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-rose-400"
-              checked={backordered}
-              onChange={(e)=>{
-                const v = e.target.checked;
-                setBackordered(v);
-                if (!v) { setTbd(false); setExpected(""); }
-              }}
-            />
-            <span className="text-sm">Is backordered</span>
-          </label>
-        </div>
-        <div className="space-y-1">
-          <div className="label-xs">Expected</div>
-          {backordered ? (
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="accent-amber-400"
-                  checked={tbd}
-                  onChange={(e)=>{ setTbd(e.target.checked); if (e.target.checked) setExpected(""); }}
-                />
-                <span className="text-sm">TBD</span>
-              </label>
-              <Input type="date" disabled={tbd} value={expected} onChange={(e)=>setExpected(e.target.value)} />
-            </div>
-          ) : (
-            <Input type="date" value={expected} onChange={(e)=>setExpected(e.target.value)} />
-          )}
-        </div>
-        <div className="space-y-1 md:col-span-3">
-          <div className="label-xs">Notes</div>
-          <textarea
-            className="w-full rounded-md bg-white/5 border border-white/10 p-2 text-sm outline-none focus:ring-2 focus:ring-cyan-400/60"
-            rows={3}
-            value={notes}
-            onChange={(e)=>setNotes(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Supplier instructions */}
-      {supplierInstructions && (
-        <div className="mt-3 text-xs text-white/60">
-          <span className="text-white/40">Supplier Instructions:</span> {supplierInstructions}
         </div>
       )}
+    </>
+  );
+}
 
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button disabled={!canSave} onClick={submit}>Save</Button>
-      </div>
-    </HoloPanel>
+function ModeTab({ active, onClick, children }:{ active:boolean; onClick:()=>void; children:React.ReactNode; }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-8 px-3 rounded-md border ${active ? "border-cyan-400/60 bg-cyan-400/10" : "border-white/10 bg-white/5 hover:bg-white/10"} text-sm`}
+    >
+      {children}
+    </button>
+  );
+}
+function ModeSubTab({ active, onClick, children }:{ active:boolean; onClick:()=>void; children:React.ReactNode; }){
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-8 px-3 rounded-md border ${active ? "border-emerald-400/60 bg-emerald-400/10" : "border-white/10 bg-white/5 hover:bg-white/10"} text-xs`}
+    >
+      {children}
+    </button>
   );
 }
