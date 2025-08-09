@@ -1,20 +1,13 @@
 // LANDMARK: shared types + validators
 import { z } from "zod";
 
-/* ENUMS */
 export const ItemType = z.enum(["casket", "urn"]);
 export type ItemType = z.infer<typeof ItemType>;
 
 export const OrderStatus = z.enum(["PENDING", "BACKORDERED", "ARRIVED", "SPECIAL"]);
 export type OrderStatus = z.infer<typeof OrderStatus>;
 
-/* TABLE TYPES */
-export type Supplier = {
-  id: number;
-  name: string;
-  ordering_instructions: string | null;
-};
-
+export type Supplier = { id: number; name: string; ordering_instructions: string | null };
 export type Casket = { id: number; name: string; supplier_id: number | null };
 export type Urn    = { id: number; name: string; supplier_id: number | null };
 
@@ -22,7 +15,7 @@ export type Order = {
   id: number;
   item_type: ItemType;
   item_id: number | null;
-  item_name: string | null; // for SPECIAL
+  item_name: string | null;     // for SPECIAL
   supplier_id: number | null;
   po_number: string;
   expected_date: string | null; // YYYY-MM-DD or null
@@ -40,7 +33,6 @@ export type VOrderEnriched = Order & {
   item_display_name: string | null;
 };
 
-/* LANDMARK: Zod ISO date (string) */
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
@@ -61,10 +53,10 @@ export const CreateOrderSchema = z
     deceased_name: z.string().min(1).max(200).nullable().optional().default(null)
   })
   .refine(
-    (data) => (data.special_order ? !!data.item_name && data.item_id === null : data.item_id !== null && !data.item_name),
+    (d) => (d.special_order ? !!d.item_name && d.item_id === null : d.item_id !== null && !d.item_name),
     { message: "For special orders use item_name (item_id null). For normal orders use item_id (no item_name)." }
   )
-  .refine((data) => (data.backordered || data.tbd_expected ? true : !!data.expected_date), {
+  .refine((d) => (d.backordered || d.tbd_expected ? true : !!d.expected_date), {
     message: "Either provide expected_date or mark as backordered/TBD."
   });
 

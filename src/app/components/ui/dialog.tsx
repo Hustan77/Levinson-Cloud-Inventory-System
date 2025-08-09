@@ -33,7 +33,7 @@ export function DialogContent({ className, children, ...props }:
         )}
       >
         {children}
-        <DialogClose className="absolute right-4 top-4 text-white/70 hover:text-white">
+        <DialogClose className="absolute right-4 top-4 text-white/70 hover:text-white" aria-label="Close">
           <X className="h-5 w-5" />
         </DialogClose>
       </DialogPrimitive.Content>

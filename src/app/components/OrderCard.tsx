@@ -1,8 +1,7 @@
 import React from "react";
 import { StatusPill } from "./StatusPill";
 import { Button } from "./ui/button";
-import { VOrderEnriched } from "../lib/types";
-
+import { VOrderEnriched } from "../../lib/types";
 
 /* LANDMARK: Order Card with neon rail and glow */
 export function OrderCard({

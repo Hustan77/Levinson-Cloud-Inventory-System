@@ -5,9 +5,8 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { CreateOrderSchema } from "../lib/types";
+import { CreateOrderSchema } from "../../lib/types";
 import { SearchBar } from "./SearchBar";
-
 
 type ItemRef = { id: number; name: string; supplier_id: number | null };
 

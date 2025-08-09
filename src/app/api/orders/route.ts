@@ -1,60 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "../../lib/supabaseServer";
-import { CreateOrderSchema } from "../../lib/types";
+import { supabaseServer } from "../../../lib/supabaseServer";
+import { CreateOrderSchema } from "../../../lib/types";
 
-
-/** GET /api/orders */
+/** GET /api/orders — prefer view, fallback to manual join */
 export async function GET() {
   const sb = supabaseServer();
 
-  // Try the view first
-  let { data, error } = await sb.from("v_orders_enriched").select("*").order("created_at", { ascending: false });
-
-  if (error) {
-    // Fallback: manual join
-    const base = await sb.from("orders").select("*").order("created_at", { ascending: false });
-    if (base.error) return new NextResponse(base.error.message, { status: 500 });
-
-    const [supRes, cRes, uRes] = await Promise.all([
-      sb.from("suppliers").select("id,name"),
-      sb.from("caskets").select("id,name"),
-      sb.from("urns").select("id,name")
-    ]);
-
-    if (supRes.error || cRes.error || uRes.error) {
-      return NextResponse.json(base.data ?? [], { status: 200 });
-    }
-
-    const supMap = new Map<number, string>();
-    supRes.data?.forEach((s) => supMap.set(s.id, s.name));
-    const cMap = new Map<number, string>();
-    cRes.data?.forEach((c) => cMap.set(c.id, c.name));
-    const uMap = new Map<number, string>();
-    uRes.data?.forEach((u) => uMap.set(u.id, u.name));
-
-    const enriched =
-      base.data?.map((o: any) => ({
-        ...o,
-        supplier_name: o.supplier_id ? supMap.get(o.supplier_id) ?? null : null,
-        item_display_name:
-          o.status === "SPECIAL"
-            ? o.item_name
-            : o.item_type === "casket"
-            ? o.item_id
-              ? cMap.get(o.item_id) ?? null
-              : null
-            : o.item_id
-            ? uMap.get(o.item_id) ?? null
-            : null
-      })) ?? [];
-
-    return NextResponse.json(enriched, { status: 200 });
+  // Try enriched view first
+  const view = await sb.from("v_orders_enriched").select("*").order("created_at", { ascending: false });
+  if (!view.error) {
+    return NextResponse.json(view.data ?? [], { status: 200 });
   }
 
-  return NextResponse.json(data ?? [], { status: 200 });
+  // Fallback to orders + client-side enrichment
+  const base = await sb.from("orders").select("*").order("created_at", { ascending: false });
+  if (base.error) return new NextResponse(base.error.message, { status: 500 });
+
+  const [supRes, cRes, uRes] = await Promise.all([
+    sb.from("suppliers").select("id,name"),
+    sb.from("caskets").select("id,name"),
+    sb.from("urns").select("id,name")
+  ]);
+
+  const supMap = new Map<number, string>();
+  supRes.data?.forEach((s) => supMap.set(s.id, s.name));
+  const cMap = new Map<number, string>();
+  cRes.data?.forEach((c) => cMap.set(c.id, c.name));
+  const uMap = new Map<number, string>();
+  uRes.data?.forEach((u) => uMap.set(u.id, u.name));
+
+  const enriched =
+    base.data?.map((o: any) => ({
+      ...o,
+      supplier_name: o.supplier_id ? supMap.get(o.supplier_id) ?? null : null,
+      item_display_name:
+        o.status === "SPECIAL"
+          ? o.item_name
+          : o.item_type === "casket"
+          ? o.item_id
+            ? cMap.get(o.item_id) ?? null
+            : null
+          : o.item_id
+          ? uMap.get(o.item_id) ?? null
+          : null
+    })) ?? [];
+
+  return NextResponse.json(enriched, { status: 200 });
 }
 
-/** POST /api/orders */
+/** POST /api/orders — create */
 export async function POST(req: NextRequest) {
   const sb = supabaseServer();
   const payload = await req.json();

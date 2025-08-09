@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { ArriveSchema, VOrderEnriched } from "../lib/types";
+import { ArriveSchema, VOrderEnriched } from "../../lib/types";
 
 export function ArrivalModal({
   order,

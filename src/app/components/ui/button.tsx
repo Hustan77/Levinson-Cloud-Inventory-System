@@ -12,16 +12,9 @@ const buttonVariants = cva(
         ghost: "bg-transparent hover:bg-white/10",
         outline: "border border-white/20 bg-transparent"
       },
-      size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 px-3",
-        lg: "h-10 px-6"
-      }
+      size: { default: "h-9 px-4 py-2", sm: "h-8 px-3", lg: "h-10 px-6" }
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default"
-    }
+    defaultVariants: { variant: "default", size: "default" }
   }
 );
 
@@ -34,13 +27,7 @@ export interface ButtonProps
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={twMerge(buttonVariants({ variant, size }), className)}
-        ref={ref}
-        {...props}
-      />
-    );
+    return <Comp className={twMerge(buttonVariants({ variant, size }), className)} ref={ref} {...props} />;
   }
 );
 Button.displayName = "Button";
