@@ -76,12 +76,19 @@ export default function UrnsPage() {
         </div>
       </div>
 
+      {/* LANDMARK: Filters slab — compact + collapsible */}
       <HoloPanel>
-        <div className="mb-2 text-xs uppercase tracking-wider text-white/60">Filters</div>
-        <div className="grid xl:grid-cols-5 md:grid-cols-3 gap-3">
+        <details className="group" open>
+          <summary className="cursor-pointer list-none flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wider text-white/60">Filters</span>
+            <span className="text-white/60 text-xs group-open:hidden">Show</span>
+            <span className="text-white/60 text-xs hidden group-open:inline">Hide</span>
+          </summary>
+
+        <div className="mt-3 grid 2xl:grid-cols-5 lg:grid-cols-4 sm:grid-cols-2 gap-2">
           <div>
-            <div className="text-xs text-white/60">Category</div>
-            <select className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm"
+            <div className="label-xs">Category</div>
+            <select className="select-sm [&>option]:bg-white [&>option]:text-black"
               value={category} onChange={(e)=>setCategory(e.target.value as any)}>
               <option value="">Any</option>
               <option value="FULL">Full Size</option>
@@ -91,26 +98,36 @@ export default function UrnsPage() {
             </select>
           </div>
           <div>
-            <div className="text-xs text-white/60">Supplier</div>
-            <select className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm"
+            <div className="label-xs">Supplier</div>
+            <select className="select-sm [&>option]:bg-white [&>option]:text-black"
               value={supplierFilter} onChange={(e)=>setSupplierFilter(e.target.value ? Number(e.target.value) : "")}>
               <option value="">Any</option>
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
-            <div className="text-xs text-white/60">Width (in)</div>
-            <div className="mt-1 flex gap-2"><Input placeholder="min" value={minW} onChange={e=>setMinW(e.target.value)} /><Input placeholder="max" value={maxW} onChange={e=>setMaxW(e.target.value)} /></div>
+            <div className="label-xs">Width (in)</div>
+            <div className="flex gap-2">
+              <Input className="input-sm" placeholder="min" value={minW} onChange={e=>setMinW(e.target.value)} />
+              <Input className="input-sm" placeholder="max" value={maxW} onChange={e=>setMaxW(e.target.value)} />
+            </div>
           </div>
           <div>
-            <div className="text-xs text-white/60">Height (in)</div>
-            <div className="mt-1 flex gap-2"><Input placeholder="min" value={minH} onChange={e=>setMinH(e.target.value)} /><Input placeholder="max" value={maxH} onChange={e=>setMaxH(e.target.value)} /></div>
+            <div className="label-xs">Height (in)</div>
+            <div className="flex gap-2">
+              <Input className="input-sm" placeholder="min" value={minH} onChange={e=>setMinH(e.target.value)} />
+              <Input className="input-sm" placeholder="max" value={maxH} onChange={e=>setMaxH(e.target.value)} />
+            </div>
           </div>
           <div>
-            <div className="text-xs text-white/60">Depth (in)</div>
-            <div className="mt-1 flex gap-2"><Input placeholder="min" value={minD} onChange={e=>setMinD(e.target.value)} /><Input placeholder="max" value={maxD} onChange={e=>setMaxD(e.target.value)} /></div>
+            <div className="label-xs">Depth (in)</div>
+            <div className="flex gap-2">
+              <Input className="input-sm" placeholder="min" value={minD} onChange={e=>setMinD(e.target.value)} />
+              <Input className="input-sm" placeholder="max" value={maxD} onChange={e=>setMaxD(e.target.value)} />
+            </div>
           </div>
         </div>
+        </details>
       </HoloPanel>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -157,7 +174,7 @@ function AddUrnModal({ suppliers, onCreate }:{
           </div>
           <div>
             <div className="text-xs text-white/60">Supplier</div>
-            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm"
+            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
               value={supplier} onChange={(e)=>setSupplier(e.target.value ? Number(e.target.value) : "")}>
               <option value="">—</option>
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -165,7 +182,7 @@ function AddUrnModal({ suppliers, onCreate }:{
           </div>
           <div>
             <div className="text-xs text-white/60">Category</div>
-            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm"
+            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
               value={category} onChange={(e)=>setCategory(e.target.value as any)}>
               <option value="">—</option>
               <option value="FULL">Full Size</option>
@@ -237,14 +254,14 @@ function UrnCard({ row, suppliers, onSave, onDelete }:{
             <Input placeholder="D" value={d} onChange={(e)=>setD(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm" value={cat} onChange={(e)=>setCat(e.target.value as any)}>
+            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black" value={cat} onChange={(e)=>setCat(e.target.value as any)}>
               <option value="">—</option>
               <option value="FULL">Full Size</option>
               <option value="KEEPSAKE">Keepsake</option>
               <option value="JEWELRY">Jewelry</option>
               <option value="SPECIAL">Special Use</option>
             </select>
-            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm" value={sup} onChange={(e)=>setSup(e.target.value ? Number(e.target.value) : "")}>
+            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black" value={sup} onChange={(e)=>setSup(e.target.value ? Number(e.target.value) : "")}>
               <option value="">No supplier</option>
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>

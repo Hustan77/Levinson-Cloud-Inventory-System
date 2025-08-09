@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 
-export async function PATCH(req: Request, { params }: { params: any }) {
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const id = Number(params.id);
   if (!Number.isFinite(id)) return new NextResponse("Invalid id", { status: 400 });
   const sb = supabaseServer();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const {
     name, supplier_id,
     ext_width_in, ext_length_in, ext_height_in,
@@ -30,7 +30,7 @@ export async function PATCH(req: Request, { params }: { params: any }) {
   return NextResponse.json(data, { status: 200 });
 }
 
-export async function DELETE(_req: Request, { params }: { params: any }) {
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const id = Number(params.id);
   if (!Number.isFinite(id)) return new NextResponse("Invalid id", { status: 400 });
   const sb = supabaseServer();

@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const sb = supabaseServer();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const {
     name, supplier_id,
     ext_width_in, ext_length_in, ext_height_in,

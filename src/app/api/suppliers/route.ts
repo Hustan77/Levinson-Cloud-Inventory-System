@@ -10,7 +10,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const sb = supabaseServer();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { name, ordering_instructions } = body ?? {};
   if (!name) return new NextResponse("name is required", { status: 400 });
   const { data, error } = await sb.from("suppliers").insert({ name, ordering_instructions: ordering_instructions ?? null }).select("*").single();

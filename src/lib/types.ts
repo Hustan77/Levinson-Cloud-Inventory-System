@@ -1,4 +1,4 @@
-// LANDMARK: shared types
+// LANDMARK: shared types + zod schemas (client & server agree)
 import { z } from "zod";
 
 export const ItemType = z.enum(["casket", "urn"]);

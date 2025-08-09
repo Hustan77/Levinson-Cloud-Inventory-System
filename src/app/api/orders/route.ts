@@ -1,90 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { CreateOrderSchema } from "../../../lib/types";
 
-/** GET /api/orders — prefer view, fallback to manual join */
 export async function GET() {
   const sb = supabaseServer();
-
-  // Try enriched view first
+  // Try view, else fallback to orders table
   const view = await sb.from("v_orders_enriched").select("*").order("created_at", { ascending: false });
-  if (!view.error) return NextResponse.json(view.data ?? [], { status: 200 });
+  if (!view.error && view.data) return NextResponse.json(view.data, { status: 200 });
 
-  // Fallback
-  const base = await sb.from("orders").select("*").order("created_at", { ascending: false });
-  if (base.error) return new NextResponse(base.error.message, { status: 500 });
-
-  const [supRes, cRes, uRes] = await Promise.all([
-    sb.from("suppliers").select("id,name"),
-    sb.from("caskets").select("id,name"),
-    sb.from("urns").select("id,name")
-  ]);
-
-  const supMap = new Map<number, string>(); supRes.data?.forEach(s => supMap.set(s.id, s.name));
-  const cMap = new Map<number, string>();   cRes.data?.forEach(c => cMap.set(c.id, c.name));
-  const uMap = new Map<number, string>();   uRes.data?.forEach(u => uMap.set(u.id, u.name));
-
-  const enriched = (base.data ?? []).map((o: any) => ({
-    ...o,
-    supplier_name: o.supplier_id ? supMap.get(o.supplier_id) ?? null : null,
-    item_display_name:
-      o.item_name ?? (o.item_type === "casket"
-        ? (o.item_id ? cMap.get(o.item_id) ?? null : null)
-        : (o.item_id ? uMap.get(o.item_id) ?? null : null))
-  }));
-
-  return NextResponse.json(enriched, { status: 200 });
+  const { data, error } = await sb.from("orders").select("*").order("created_at", { ascending: false });
+  if (error) return new NextResponse(error.message, { status: 500 });
+  return NextResponse.json(data ?? [], { status: 200 });
 }
 
-/** POST /api/orders — create */
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const sb = supabaseServer();
-  const payload = await req.json();
-
-  const parsed = CreateOrderSchema.safeParse(payload);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const p = parsed.data;
-
-  // Determine supplier_id
-  let supplier_id: number | null = null;
-
-  if (p.special_order) {
-    // LANDMARK: prefer explicit supplier_id when provided for custom special
-    if (p.supplier_id) supplier_id = p.supplier_id;
-    else {
-      // Fallback (backward-compat)
-      const any = await sb.from("suppliers").select("id").limit(1).single();
-      supplier_id = any.data?.id ?? null;
-    }
-  } else {
-    if (!p.item_id) return new NextResponse("Missing item_id", { status: 400 });
-    if (p.item_type === "casket") {
-      const { data, error } = await sb.from("caskets").select("supplier_id").eq("id", p.item_id).single();
-      if (error) return new NextResponse(error.message, { status: 400 });
-      supplier_id = data?.supplier_id ?? null;
-    } else {
-      const { data, error } = await sb.from("urns").select("supplier_id").eq("id", p.item_id).single();
-      if (error) return new NextResponse(error.message, { status: 400 });
-      supplier_id = data?.supplier_id ?? null;
-    }
+  const body = await req.json().catch(() => ({}));
+  const parsed = CreateOrderSchema.safeParse(body);
+  if (!parsed.success) {
+    return new NextResponse(parsed.error.errors.map(e=>e.message).join("; "), { status: 400 });
   }
+  const payload = parsed.data;
 
-  // Derive status
-  let status: "PENDING" | "BACKORDERED" | "SPECIAL" = "PENDING";
-  if (p.special_order) status = "SPECIAL";
-  else if (p.backordered || p.tbd_expected) status = "BACKORDERED";
+  // Base status
+  let status: "PENDING" | "BACKORDERED" | "SPECIAL" = payload.backordered ? "BACKORDERED" : "PENDING";
+  if (payload.special_order) status = "SPECIAL";
 
   const insert = {
-    item_type: p.item_type,
-    item_id: p.special_order ? null : p.item_id,
-    item_name: p.special_order ? p.item_name : null,
-    supplier_id,
-    po_number: p.po_number,
-    expected_date: p.expected_date,
+    item_type: payload.item_type,
+    item_id: payload.special_order ? null : payload.item_id,
+    item_name: payload.special_order ? payload.item_name : null,
+    supplier_id: payload.supplier_id ?? null,
+    po_number: payload.po_number,
+    expected_date: payload.expected_date,
     status,
-    backordered: p.backordered,
-    tbd_expected: p.tbd_expected,
-    deceased_name: p.special_order ? p.deceased_name : null
+    backordered: payload.backordered,
+    tbd_expected: payload.tbd_expected,
+    deceased_name: payload.special_order ? (payload.deceased_name ?? null) : null,
   };
 
   const { data, error } = await sb.from("orders").insert(insert).select("*").single();

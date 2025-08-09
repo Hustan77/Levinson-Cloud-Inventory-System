@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const sb = supabaseServer();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { name, supplier_id, width_in, height_in, depth_in, category } = body ?? {};
   if (!name) return new NextResponse("name is required", { status: 400 });
   const { data, error } = await sb
