@@ -14,15 +14,16 @@ export async function PATCH(req: Request) {
 
   const sb = supabaseServer();
   const body = await req.json().catch(() => ({}));
-  const { name, supplier_id, width_in, height_in, depth_in, category } = body ?? {};
 
   const update: Record<string, any> = {};
-  if (name !== undefined) update.name = name;
-  if (supplier_id !== undefined) update.supplier_id = supplier_id;
-  if (width_in !== undefined) update.width_in = width_in;
-  if (height_in !== undefined) update.height_in = height_in;
-  if (depth_in !== undefined) update.depth_in = depth_in;
-  if (category !== undefined) update.category = category;
+  const keys = [
+    "name","supplier_id",
+    "width_in","height_in","depth_in",
+    "target_qty","on_hand","on_order","backordered_count",
+    "category","green"
+  ] as const;
+
+  for (const k of keys) if (k in body) (update as any)[k] = body[k];
 
   const { data, error } = await sb.from("urns").update(update).eq("id", id).select("*").single();
   if (error) return new NextResponse(error.message, { status: 500 });

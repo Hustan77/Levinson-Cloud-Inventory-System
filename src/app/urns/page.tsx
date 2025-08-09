@@ -2,276 +2,225 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { HoloPanel } from "../components/HoloPanel";
-import { SearchBar } from "../components/SearchBar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import type { Supplier, Urn } from "../../lib/types";
 
-type Supplier = { id:number; name:string };
-type UrnCategory = "FULL" | "KEEPSAKE" | "JEWELRY" | "SPECIAL";
-type Urn = { id:number; name:string; supplier_id:number | null; width_in:number | null; height_in:number | null; depth_in:number | null; category: UrnCategory | null };
-
-const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
+type Filters = {
+  supplier: number | "";
+  category: "" | "Full Size" | "Keepsake" | "Jewelry" | "Special Use";
+  green: "" | "yes" | "no";
+  minW?: string; maxW?: string; minH?: string; maxH?: string; minD?: string; maxD?: string;
+  q: string;
+};
 
 export default function UrnsPage() {
-  const [rows,setRows] = useState<Urn[]>([]);
-  const [suppliers,setSuppliers] = useState<Supplier[]>([]);
-  const [q,setQ] = useState("");
+  const [rows, setRows] = useState<Urn[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [filters, setFilters] = useState<Filters>({ supplier: "", category: "", green: "", q: "" });
+  const [openModal, setOpenModal] = useState<null | { mode: "add" } | { mode: "edit", row: Urn }>(null);
 
-  const [supplierFilter,setSupplierFilter] = useState<number | "">("");
-  const [category,setCategory] = useState<"" | UrnCategory>("");
-  const [minW,setMinW] = useState(""); const [maxW,setMaxW] = useState("");
-  const [minH,setMinH] = useState(""); const [maxH,setMaxH] = useState("");
-  const [minD,setMinD] = useState(""); const [maxD,setMaxD] = useState("");
-
-  useEffect(()=>{ (async ()=>{
-    const [u,s] = await Promise.all([ fetch("/api/urns").then(r=>r.json()), fetch("/api/suppliers").then(r=>r.json()) ]);
+  async function load() {
+    const [u, s] = await Promise.all([
+      fetch("/api/urns", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/suppliers", { cache: "no-store" }).then(r => r.json()),
+    ]);
     setRows(u); setSuppliers(s);
-  })(); }, []);
+  }
+  useEffect(()=>{ load(); }, []);
 
-  const filtered = useMemo(()=>{
-    const s = q.trim().toLowerCase();
-    const wMin = numOrNull(minW), wMax = numOrNull(maxW);
-    const hMin = numOrNull(minH), hMax = numOrNull(maxH);
-    const dMin = numOrNull(minD), dMax = numOrNull(maxD);
-
-    return rows.filter(r=>{
-      if (s && !r.name.toLowerCase().includes(s)) return false;
-      if (supplierFilter !== "" && r.supplier_id !== Number(supplierFilter)) return false;
-      if (category && r.category !== category) return false;
-      const w=r.width_in, h=r.height_in, d=r.depth_in;
-      if (wMin!==null && (w==null || w < wMin)) return false;
-      if (wMax!==null && (w==null || w > wMax)) return false;
-      if (hMin!==null && (h==null || h < hMin)) return false;
-      if (hMax!==null && (h==null || h > hMax)) return false;
-      if (dMin!==null && (d==null || d < dMin)) return false;
-      if (dMax!==null && (d==null || d > dMax)) return false;
+  const filtered = useMemo(() => {
+    return rows.filter(r => {
+      if (filters.supplier && r.supplier_id !== filters.supplier) return false;
+      if (filters.category && r.category !== filters.category) return false;
+      if (filters.green==="yes" && !r.green) return false;
+      if (filters.green==="no"  && r.green) return false;
+      const within = (v: number | null | undefined, min?: string, max?: string) => {
+        if (v==null) return true;
+        if (min && v < Number(min)) return false;
+        if (max && v > Number(max)) return false;
+        return true;
+      };
+      if (!within(r.width_in as any,  filters.minW, filters.maxW)) return false;
+      if (!within(r.height_in as any, filters.minH, filters.maxH)) return false;
+      if (!within(r.depth_in as any,  filters.minD, filters.maxD)) return false;
+      if (filters.q) {
+        const t = `${r.name}`.toLowerCase();
+        if (!t.includes(filters.q.toLowerCase())) return false;
+      }
       return true;
     });
-  }, [rows,q,supplierFilter,category,minW,maxW,minH,maxH,minD,maxD]);
-
-  async function save(id:number, patch: Partial<Urn>) {
-    const res = await fetch(`/api/urns/${id}`, { method:"PATCH", body: JSON.stringify(patch) });
-    if (res.ok) { const r = await res.json(); setRows(prev => prev.map(p => p.id === id ? r : p)); }
-    else alert(await res.text());
-  }
-  async function remove(id:number) {
-    if (!confirm("Delete urn?")) return;
-    const res = await fetch(`/api/urns/${id}`, { method:"DELETE" });
-    if (res.ok) setRows(prev => prev.filter(p => p.id !== id)); else alert(await res.text());
-  }
-  async function addUrn(payload:any, close: () => void) {
-    const res = await fetch("/api/urns", { method:"POST", body: JSON.stringify(payload) });
-    if (res.ok) { const row = await res.json(); setRows(prev => [row, ...prev]); close(); }
-    else alert(await res.text());
-  }
+  }, [rows, filters]);
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Urns</h1>
-        <div className="flex gap-3 items-center">
-          <div className="w-80"><SearchBar value={q} onChange={setQ} placeholder="Search urns by name..." /></div>
-          <AddUrnModal suppliers={suppliers} onCreate={addUrn} />
-        </div>
+        <h1 className="text-white/90 text-lg">Urns</h1>
+        <Button variant="default" onClick={()=>setOpenModal({ mode: "add" })}>Add Urn</Button>
       </div>
 
-      {/* LANDMARK: Filters slab — compact + collapsible */}
-      <HoloPanel>
-        <details className="group" open>
-          <summary className="cursor-pointer list-none flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-white/60">Filters</span>
-            <span className="text-white/60 text-xs group-open:hidden">Show</span>
-            <span className="text-white/60 text-xs hidden group-open:inline">Hide</span>
-          </summary>
-
-        <div className="mt-3 grid 2xl:grid-cols-5 lg:grid-cols-4 sm:grid-cols-2 gap-2">
-          <div>
-            <div className="label-xs">Category</div>
-            <select className="select-sm [&>option]:bg-white [&>option]:text-black"
-              value={category} onChange={(e)=>setCategory(e.target.value as any)}>
-              <option value="">Any</option>
-              <option value="FULL">Full Size</option>
-              <option value="KEEPSAKE">Keepsake</option>
-              <option value="JEWELRY">Jewelry</option>
-              <option value="SPECIAL">Special Use</option>
-            </select>
-          </div>
-          <div>
+      {/* LANDMARK: Filters */}
+      <HoloPanel railColor="cyan">
+        <div className="text-xs text-white/60 mb-2">Filters</div>
+        <div className="grid md:grid-cols-6 gap-2">
+          <div className="space-y-1">
             <div className="label-xs">Supplier</div>
-            <select className="select-sm [&>option]:bg-white [&>option]:text-black"
-              value={supplierFilter} onChange={(e)=>setSupplierFilter(e.target.value ? Number(e.target.value) : "")}>
+            <select className="select-sm w-full" value={filters.supplier} onChange={e=>setFilters(f=>({...f, supplier: e.target.value? Number(e.target.value): ""}))}>
               <option value="">Any</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <div>
-            <div className="label-xs">Width (in)</div>
-            <div className="flex gap-2">
-              <Input className="input-sm" placeholder="min" value={minW} onChange={e=>setMinW(e.target.value)} />
-              <Input className="input-sm" placeholder="max" value={maxW} onChange={e=>setMaxW(e.target.value)} />
-            </div>
+          <div className="space-y-1">
+            <div className="label-xs">Category</div>
+            <select className="select-sm w-full" value={filters.category} onChange={e=>setFilters(f=>({...f, category: e.target.value as any}))}>
+              <option value="">Any</option>
+              <option>Full Size</option><option>Keepsake</option><option>Jewelry</option><option>Special Use</option>
+            </select>
           </div>
-          <div>
-            <div className="label-xs">Height (in)</div>
-            <div className="flex gap-2">
-              <Input className="input-sm" placeholder="min" value={minH} onChange={e=>setMinH(e.target.value)} />
-              <Input className="input-sm" placeholder="max" value={maxH} onChange={e=>setMaxH(e.target.value)} />
-            </div>
+          <div className="space-y-1">
+            <div className="label-xs">Green</div>
+            <select className="select-sm w-full" value={filters.green} onChange={e=>setFilters(f=>({...f, green: e.target.value as any}))}>
+              <option value="">Any</option>
+              <option value="yes">Green Only</option>
+              <option value="no">Exclude Green</option>
+            </select>
           </div>
-          <div>
-            <div className="label-xs">Depth (in)</div>
-            <div className="flex gap-2">
-              <Input className="input-sm" placeholder="min" value={minD} onChange={e=>setMinD(e.target.value)} />
-              <Input className="input-sm" placeholder="max" value={maxD} onChange={e=>setMaxD(e.target.value)} />
-            </div>
+          <div className="space-y-1">
+            <div className="label-xs">Search</div>
+            <Input className="input-sm" placeholder="Name..." value={filters.q} onChange={e=>setFilters(f=>({...f, q: e.target.value}))}/>
           </div>
+          <Dim label="Width" min={filters.minW} max={filters.maxW} onMin={v=>setFilters(f=>({...f, minW:v}))} onMax={v=>setFilters(f=>({...f, maxW:v}))}/>
+          <Dim label="Height" min={filters.minH} max={filters.maxH} onMin={v=>setFilters(f=>({...f, minH:v}))} onMax={v=>setFilters(f=>({...f, maxH:v}))}/>
+          <Dim label="Depth" min={filters.minD} max={filters.maxD} onMin={v=>setFilters(f=>({...f, minD:v}))} onMax={v=>setFilters(f=>({...f, maxD:v}))}/>
         </div>
-        </details>
       </HoloPanel>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(r => (
-          <UrnCard key={r.id} row={r} suppliers={suppliers} onSave={save} onDelete={remove} />
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {filtered.map(row => (
+          <HoloPanel key={row.id} railColor="purple">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-white/90">{row.name}</div>
+                <div className="text-xs text-white/60 mt-1">Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}</div>
+                <div className="text-xs text-white/60 mt-1">Category: {row.category} {row.green ? "• Green" : ""}</div>
+                <div className="text-xs text-white/60 mt-1">
+                  {row.width_in ?? "—"}W × {row.height_in ?? "—"}H × {row.depth_in ?? "—"}D
+                </div>
+                <div className="mt-2 text-xs">
+                  Target: <b>{row.target_qty}</b> • On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order}</b> • Backorders: <b className="text-rose-300">{row.backordered_count}</b>
+                  <div className={(row.on_hand + row.on_order) >= row.target_qty ? "text-emerald-300" : "text-amber-300"}>
+                    {(row.on_hand + row.on_order) >= row.target_qty ? "Full" : `Short by ${Math.max(0, row.target_qty - (row.on_hand + row.on_order))}`}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button size="sm" variant="outline" onClick={()=>setOpenModal({ mode: "edit", row })}>Edit</Button>
+                <Button size="sm" variant="outline" onClick={async ()=>{
+                  if(!confirm("Delete this urn?")) return;
+                  const res = await fetch(`/api/urns/${row.id}`, { method: "DELETE" });
+                  if(!res.ok){ alert(await res.text()); return; }
+                  load();
+                }}>Delete</Button>
+              </div>
+            </div>
+          </HoloPanel>
         ))}
-        {filtered.length === 0 && <div className="text-white/60">No matches.</div>}
       </div>
+
+      {openModal && (
+        <UrnModal
+          mode={openModal.mode}
+          row={openModal.mode==='edit'? openModal.row : undefined}
+          suppliers={suppliers}
+          onClose={()=>setOpenModal(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
 
-/* ------------------ Add Urn Modal ------------------ */
-function AddUrnModal({ suppliers, onCreate }:{
-  suppliers: Supplier[];
-  onCreate: (payload:any, close: () => void) => void;
-}) {
-  const [open,setOpen] = useState(false);
-  const [name,setName] = useState("");
-  const [supplier,setSupplier] = useState<number | "">("");
-  const [category,setCategory] = useState<"" | UrnCategory>("");
-  const [w,setW] = useState(""); const [h,setH] = useState(""); const [d,setD] = useState("");
-
-  function submit(){
-    onCreate({
-      name,
-      supplier_id: supplier === "" ? null : Number(supplier),
-      category: category || null,
-      width_in: numOrNull(w),
-      height_in: numOrNull(h),
-      depth_in: numOrNull(d)
-    }, () => setOpen(false));
-  }
-
+function Dim({ label, min, max, onMin, onMax }:{ label:string; min?:string; max?:string; onMin:(v:string)=>void; onMax:(v:string)=>void; }) {
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button>Add Urn</Button></DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Add Urn</DialogTitle></DialogHeader>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-white/60">Name</div>
-            <Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="Urn name" />
-          </div>
-          <div>
-            <div className="text-xs text-white/60">Supplier</div>
-            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
-              value={supplier} onChange={(e)=>setSupplier(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">—</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <div className="text-xs text-white/60">Category</div>
-            <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
-              value={category} onChange={(e)=>setCategory(e.target.value as any)}>
-              <option value="">—</option>
-              <option value="FULL">Full Size</option>
-              <option value="KEEPSAKE">Keepsake</option>
-              <option value="JEWELRY">Jewelry</option>
-              <option value="SPECIAL">Special Use</option>
-            </select>
-          </div>
-          <Input placeholder="Width (in)" value={w} onChange={(e)=>setW(e.target.value)} />
-          <Input placeholder="Height (in)" value={h} onChange={(e)=>setH(e.target.value)} />
-          <Input placeholder="Depth (in)" value={d} onChange={(e)=>setD(e.target.value)} />
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={!name}>Create</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="grid grid-cols-3 gap-1">
+      <div className="label-xs col-span-3">{label} (in)</div>
+      <Input className="input-sm" placeholder="Min" value={min ?? ""} onChange={e=>onMin(e.target.value)} />
+      <div className="text-center text-xs text-white/40 self-center">–</div>
+      <Input className="input-sm" placeholder="Max" value={max ?? ""} onChange={e=>onMax(e.target.value)} />
+    </div>
   );
 }
 
-/* ------------------ Urn Card ------------------ */
-function UrnCard({ row, suppliers, onSave, onDelete }:{
-  row: Urn;
+/* LANDMARK: Urn Modal (add/edit) */
+function UrnModal({ mode, row, suppliers, onClose, onSaved }:{
+  mode: "add"|"edit";
+  row?: Urn;
   suppliers: Supplier[];
-  onSave: (id:number, patch:Partial<Urn>)=>void;
-  onDelete: (id:number)=>void;
+  onClose: ()=>void;
+  onSaved: ()=>void;
 }) {
-  const [editing,setEditing] = useState(false);
-  const [name,setName] = useState(row.name);
-  const [sup,setSup] = useState<number | "">(row.supplier_id ?? "");
-  const [cat,setCat] = useState<"" | UrnCategory>(row.category ?? "");
-  const [w,setW] = useState(row.width_in?.toString() ?? "");
-  const [h,setH] = useState(row.height_in?.toString() ?? "");
-  const [d,setD] = useState(row.depth_in?.toString() ?? "");
+  const [name, setName] = useState(row?.name ?? "");
+  const [supplierId, setSupplierId] = useState<number | "">(row?.supplier_id ?? "");
+  const [width, setWidth] = useState<string>(row?.width_in?.toString() ?? "");
+  const [height, setHeight] = useState<string>(row?.height_in?.toString() ?? "");
+  const [depth, setDepth] = useState<string>(row?.depth_in?.toString() ?? "");
+  const [category, setCategory] = useState<Urn["category"]>(row?.category ?? "Full Size");
+  const [green, setGreen] = useState<boolean>(row?.green ?? false);
+  const [target, setTarget] = useState<string>((row?.target_qty ?? 0).toString());
+  const [onHand, setOnHand] = useState<string>((row?.on_hand ?? 0).toString());
+  const [onOrder, setOnOrder] = useState<string>((row?.on_order ?? 0).toString());
 
-  function reset(){ setEditing(false); setName(row.name); setSup(row.supplier_id ?? ""); setCat(row.category ?? ""); setW(row.width_in?.toString() ?? ""); setH(row.height_in?.toString() ?? ""); setD(row.depth_in?.toString() ?? ""); }
-  async function save(){
-    await onSave(row.id, {
-      name,
-      supplier_id: sup === "" ? null : Number(sup),
-      category: cat || null,
-      width_in: w.trim()===""? null : Number(w),
-      height_in: h.trim()===""? null : Number(h),
-      depth_in: d.trim()===""? null : Number(d),
-    });
-    setEditing(false);
+  async function save() {
+    const payload = {
+      name: name.trim(),
+      supplier_id: supplierId === "" ? null : Number(supplierId),
+      width_in: width ? Number(width) : null,
+      height_in: height ? Number(height) : null,
+      depth_in: depth ? Number(depth) : null,
+      category, green,
+      target_qty: Number(target) || 0,
+      on_hand: Number(onHand) || 0,
+      on_order: Number(onOrder) || 0,
+    };
+    const url = mode==="add" ? "/api/urns" : `/api/urns/${row!.id}`;
+    const method = mode==="add" ? "POST" : "PATCH";
+    const res = await fetch(url, { method, body: JSON.stringify(payload) });
+    if(!res.ok){ alert(await res.text()); return; }
+    onClose(); onSaved();
   }
 
   return (
-    <HoloPanel>
-      {!editing ? (
-        <div className="space-y-2">
-          <div className="text-lg font-semibold">{row.name}</div>
-          <div className="text-sm text-white/70">Category: {row.category ?? "—"}</div>
-          <div className="text-sm text-white/70">W {row.width_in ?? "—"}″ • H {row.height_in ?? "—"}″ • D {row.depth_in ?? "—"}″</div>
-          <div className="text-sm text-white/60">Supplier ID: {row.supplier_id ?? "—"}</div>
-          <div className="pt-2 flex justify-end gap-2">
-            <Button variant="outline" onClick={()=>setEditing(true)}>Edit</Button>
-            <Button variant="outline" onClick={()=>onDelete(row.id)}>Delete</Button>
-          </div>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+      <HoloPanel railColor="purple" className="w-full max-w-2xl">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-white/90">{mode==="add" ? "Add Urn" : "Edit Urn"}</div>
+          <Button variant="outline" onClick={onClose}>Close</Button>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <Input value={name} onChange={(e)=>setName(e.target.value)} />
-          <div className="grid grid-cols-3 gap-2">
-            <Input placeholder="W" value={w} onChange={(e)=>setW(e.target.value)} />
-            <Input placeholder="H" value={h} onChange={(e)=>setH(e.target.value)} />
-            <Input placeholder="D" value={d} onChange={(e)=>setD(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black" value={cat} onChange={(e)=>setCat(e.target.value as any)}>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div className="space-y-1"><div className="label-xs">Name</div><Input value={name} onChange={e=>setName(e.target.value)} /></div>
+          <div className="space-y-1">
+            <div className="label-xs">Supplier</div>
+            <select className="select-sm w-full" value={supplierId} onChange={e=>setSupplierId(e.target.value? Number(e.target.value):"")}>
               <option value="">—</option>
-              <option value="FULL">Full Size</option>
-              <option value="KEEPSAKE">Keepsake</option>
-              <option value="JEWELRY">Jewelry</option>
-              <option value="SPECIAL">Special Use</option>
-            </select>
-            <select className="rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black" value={sup} onChange={(e)=>setSup(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">No supplier</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <div className="pt-2 flex justify-end gap-2">
-            <Button variant="outline" onClick={reset}>Cancel</Button>
-            <Button onClick={save} disabled={!name}>Save</Button>
+          <div className="space-y-1"><div className="label-xs">Width (in)</div><Input className="input-sm" value={width} onChange={e=>setWidth(e.target.value)} /></div>
+          <div className="space-y-1"><div className="label-xs">Height (in)</div><Input className="input-sm" value={height} onChange={e=>setHeight(e.target.value)} /></div>
+          <div className="space-y-1"><div className="label-xs">Depth (in)</div><Input className="input-sm" value={depth} onChange={e=>setDepth(e.target.value)} /></div>
+          <div className="space-y-1">
+            <div className="label-xs">Category</div>
+            <select className="select-sm w-full" value={category} onChange={e=>setCategory(e.target.value as any)}>
+              <option>Full Size</option><option>Keepsake</option><option>Jewelry</option><option>Special Use</option>
+            </select>
           </div>
+          <label className="flex items-end gap-2"><input type="checkbox" className="accent-emerald-400" checked={green} onChange={e=>setGreen(e.target.checked)} /><span className="text-sm">Green</span></label>
+          <div className="space-y-1"><div className="label-xs">Target Qty</div><Input className="input-sm" value={target} onChange={e=>setTarget(e.target.value)} /></div>
+          <div className="space-y-1"><div className="label-xs">On Hand</div><Input className="input-sm" value={onHand} onChange={e=>setOnHand(e.target.value)} /></div>
+          <div className="space-y-1"><div className="label-xs">On Order</div><Input className="input-sm" value={onOrder} onChange={e=>setOnOrder(e.target.value)} /></div>
         </div>
-      )}
-    </HoloPanel>
+        <div className="mt-4 flex justify-end"><Button onClick={save}>Save</Button></div>
+      </HoloPanel>
+    </div>
   );
 }

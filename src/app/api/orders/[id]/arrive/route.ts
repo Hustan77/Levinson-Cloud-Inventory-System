@@ -2,12 +2,9 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "../../../../../lib/supabaseServer";
 import { ArriveSchema } from "../../../../../lib/types";
 
-// LANDMARK: path ends with /orders/[id]/arrive — id is the segment before "arrive"
 function getOrderId(req: Request) {
   const parts = new URL(req.url).pathname.split("/").filter(Boolean);
-  // .../api/orders/[id]/arrive -> last = "arrive", prev = id
-  if (parts.length < 2) return null;
-  const idStr = parts[parts.length - 2];
+  const idStr = parts[parts.length - 2]; // .../orders/[id]/arrive
   const id = Number(idStr);
   return Number.isFinite(id) ? id : null;
 }
@@ -18,14 +15,20 @@ export async function PATCH(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const parsed = ArriveSchema.safeParse(body);
-  if (!parsed.success) return new NextResponse(parsed.error.errors.map(e=>e.message).join("; "), { status: 400 });
+  if (!parsed.success) {
+    return new NextResponse(parsed.error.errors.map((e) => e.message).join("; "), { status: 400 });
+  }
 
   const { received_by, arrived_at } = parsed.data;
 
   const sb = supabaseServer();
   const { data, error } = await sb
     .from("orders")
-    .update({ arrived_at: arrived_at ?? new Date().toISOString(), received_by, status: "ARRIVED" })
+    .update({
+      arrived_at: arrived_at ?? new Date().toISOString(),
+      received_by,
+      status: "ARRIVED",
+    })
     .eq("id", id)
     .select("*")
     .single();

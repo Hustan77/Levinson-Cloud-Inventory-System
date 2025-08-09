@@ -16,31 +16,36 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({}));
   const parsed = UpdateOrderSchema.safeParse(body);
   if (!parsed.success) {
-    return new NextResponse(parsed.error.errors.map(e=>e.message).join("; "), { status: 400 });
+    return new NextResponse(parsed.error.errors.map((e) => e.message).join("; "), { status: 400 });
   }
 
   const sb = supabaseServer();
   const patch = parsed.data;
 
+  // If non-backordered now and no expected_date -> error
+  if (patch.backordered === false) {
+    if (!patch.expected_date) {
+      return new NextResponse("Provide expected_date when not backordered.", { status: 400 });
+    }
+    if (patch.tbd_expected) {
+      return new NextResponse("TBD cannot be selected when not backordered.", { status: 400 });
+    }
+  }
+
   const { data, error } = await sb.from("orders").update(patch).eq("id", id).select("*").single();
   if (error) return new NextResponse(error.message, { status: 500 });
 
+  // keep coherent status if not ARRIVED
   if (data.status !== "ARRIVED") {
-    const nextStatus = data.backordered ? "BACKORDERED" : (data.item_name ? "SPECIAL" : "PENDING");
+    const nextStatus = data.special_order
+      ? "SPECIAL"
+      : data.backordered
+      ? "BACKORDERED"
+      : "PENDING";
     const upd = await sb.from("orders").update({ status: nextStatus }).eq("id", id);
     if (upd.error) return new NextResponse(upd.error.message, { status: 500 });
     return NextResponse.json({ ...data, status: nextStatus }, { status: 200 });
   }
 
   return NextResponse.json(data, { status: 200 });
-}
-
-export async function DELETE(req: Request) {
-  const id = getId(req);
-  if (id === null) return new NextResponse("Invalid id", { status: 400 });
-
-  const sb = supabaseServer();
-  const { error } = await sb.from("orders").delete().eq("id", id);
-  if (error) return new NextResponse(error.message, { status: 500 });
-  return new NextResponse(null, { status: 204 });
 }

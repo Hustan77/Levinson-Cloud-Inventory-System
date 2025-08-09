@@ -1,132 +1,147 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { KpiTile } from "./components/KpiTile";
+import type { Route } from "next"; // ✅ typedRoutes: use Route for Link href
 import { HoloPanel } from "./components/HoloPanel";
+import { KpiTile } from "./components/KpiTile";
 import { OrderCard } from "./components/OrderCard";
 import { OrderModal } from "./components/OrderModal";
-import { ArrivalModal } from "./components/ArrivalModal";
-import { VOrderEnriched } from "@/lib/types";
-import { SearchBar } from "./components/SearchBar";
+import { Button } from "./components/ui/button";
+import Link from "next/link";
+import type { VOrderEnriched } from "../lib/types";
 
-/* LANDMARK: Dashboard */
-export default function DashboardPage() {
+type Counts = { caskets: number; urns: number; suppliers: number; ordersActive: number };
+type InvAlert = { item_type: "casket" | "urn"; item_id: number; name: string; short_by: number };
+
+export default function Dashboard() {
   const [orders, setOrders] = useState<VOrderEnriched[]>([]);
-  const [search, setSearch] = useState("");
+  const [counts, setCounts] = useState<Counts>({ caskets: 0, urns: 0, suppliers: 0, ordersActive: 0 });
+  const [alerts, setAlerts] = useState<InvAlert[]>([]);
 
   async function load() {
-    const res = await fetch("/api/orders");
-    const data = await res.json();
-    setOrders(data);
+    const [o, c, u, s, vs] = await Promise.all([
+      fetch("/api/orders?includeArrived=0", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/caskets", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/urns", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/suppliers", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/v_inventory_status").then(r => (r.ok ? r.json() : [])).catch(() => []),
+    ]);
+
+    setOrders(o);
+    setCounts({
+      caskets: c.length,
+      urns: u.length,
+      suppliers: s.length,
+      ordersActive: o.length,
+    });
+
+    const statusRows: any[] = Array.isArray(vs) ? vs : [];
+    const needs = statusRows
+      .filter(r => r.requires_attention)
+      .map((r) => ({
+        item_type: r.item_type,
+        item_id: r.item_id,
+        name: r.name,
+        short_by: r.short_by,
+      }));
+    setAlerts(needs);
   }
-  useEffect(() => { load(); }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter(o =>
-      (o.item_display_name ?? "").toLowerCase().includes(q) ||
-      (o.po_number ?? "").toLowerCase().includes(q) ||
-      (o.supplier_name ?? "").toLowerCase().includes(q)
-    );
-  }, [orders, search]);
-
-  // KPI counts
-  const kpi = useMemo(() => {
-    const totalCasket = filtered.filter(o => o.item_type === "casket").length;
-    const totalUrn = filtered.filter(o => o.item_type === "urn").length;
-    const suppliers = new Set(filtered.map(o => o.supplier_id).filter(Boolean)).size;
-    const active = filtered.filter(o => o.status !== "ARRIVED").length;
-    return { totalCasket, totalUrn, suppliers, active };
-  }, [filtered]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const grouped = useMemo(() => {
-    const by = { PENDING: [] as VOrderEnriched[], BACKORDERED: [] as VOrderEnriched[], SPECIAL: [] as VOrderEnriched[], ARRIVED: [] as VOrderEnriched[] };
-    for (const o of filtered) by[o.status].push(o);
-    return by;
-  }, [filtered]);
-
-  const [arriving, setArriving] = useState<VOrderEnriched | null>(null);
+    const g = {
+      PENDING: [] as VOrderEnriched[],
+      BACKORDERED: [] as VOrderEnriched[],
+      SPECIAL: [] as VOrderEnriched[],
+    };
+    for (const o of orders) {
+      if (o.status === "PENDING") g.PENDING.push(o);
+      else if (o.status === "BACKORDERED") g.BACKORDERED.push(o);
+      else if (o.status === "SPECIAL") g.SPECIAL.push(o);
+    }
+    return g;
+  }, [orders]);
 
   return (
-    <div className="space-y-8">
-      {/* LANDMARK: KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiTile label="Caskets" value={kpi.totalCasket} accent="cyan" />
-        <KpiTile label="Urns" value={kpi.totalUrn} accent="emerald" />
-        <KpiTile label="Suppliers" value={kpi.suppliers} accent="purple" />
-        <KpiTile label="Active Orders" value={kpi.active} accent="amber" />
+    <div className="p-6 space-y-6">
+      {/* LANDMARK: KPI Tiles */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiTile label="Caskets" value={counts.caskets} accent="cyan" />
+        <KpiTile label="Urns" value={counts.urns} accent="purple" />
+        <KpiTile label="Suppliers" value={counts.suppliers} accent="amber" />
+        <KpiTile label="Active Orders" value={counts.ordersActive} accent="emerald" />
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center justify-between gap-4">
-        <HoloPanel rail={false} className="flex-1">
-          <div className="flex items-center gap-3">
-            <SearchBar value={search} onChange={setSearch} placeholder="Search orders by item, PO#, or supplier..." />
+      {/* LANDMARK: Alerts banner */}
+      {alerts.length > 0 && (
+        <HoloPanel railColor="rose">
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <strong className="text-rose-300">Attention:</strong> {alerts.length} product(s) are short and have backorders.
+            </div>
+            {/* ✅ typedRoutes fix: cast to Route */}
+            <Link href={"/orders" as Route}>
+              <Button size="sm" variant="outline">View All Orders</Button>
+            </Link>
           </div>
+          <ul className="mt-2 text-sm text-white/80 list-disc pl-6">
+            {alerts.slice(0, 5).map((a) => (
+              <li key={`${a.item_type}-${a.item_id}`}>{a.name} — short by {a.short_by}</li>
+            ))}
+          </ul>
         </HoloPanel>
-        <OrderModal onCreated={load} />
-      </div>
-
-      {/* Order Lanes */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* PENDING */}
-        <div>
-          <h2 className="mb-2 font-semibold text-amber-300">PENDING</h2>
-          <div className="space-y-3">
-            {grouped.PENDING.map(o => (
-              <OrderCard key={o.id} order={o} onArriveClick={(oo) => setArriving(oo)} />
-            ))}
-            {grouped.PENDING.length === 0 && <EmptyLane text="No pending orders" />}
-          </div>
-        </div>
-
-        {/* BACKORDERED */}
-        <div>
-          <h2 className="mb-2 font-semibold text-rose-300">BACKORDERED</h2>
-          <div className="space-y-3">
-            {grouped.BACKORDERED.map(o => (
-              <OrderCard key={o.id} order={o} onArriveClick={(oo) => setArriving(oo)} />
-            ))}
-            {grouped.BACKORDERED.length === 0 && <EmptyLane text="No backorders" />}
-          </div>
-        </div>
-
-        {/* SPECIAL */}
-        <div>
-          <h2 className="mb-2 font-semibold text-fuchsia-300">SPECIAL</h2>
-          <div className="space-y-3">
-            {grouped.SPECIAL.map(o => (
-              <OrderCard key={o.id} order={o} onArriveClick={(oo) => setArriving(oo)} />
-            ))}
-            {grouped.SPECIAL.length === 0 && <EmptyLane text="No special orders" />}
-          </div>
-        </div>
-
-        {/* ARRIVED */}
-        <div>
-          <h2 className="mb-2 font-semibold text-emerald-300">ARRIVED</h2>
-          <div className="space-y-3">
-            {grouped.ARRIVED.map(o => (
-              <OrderCard key={o.id} order={o} onArriveClick={(oo) => setArriving(oo)} />
-            ))}
-            {grouped.ARRIVED.length === 0 && <EmptyLane text="No arrivals yet" />}
-          </div>
-        </div>
-      </div>
-
-      {arriving && (
-        <ArrivalModal
-          order={arriving}
-          onCompleted={() => { setArriving(null); load(); }}
-        />
       )}
+
+      {/* LANDMARK: Quick actions */}
+      <HoloPanel railColor="cyan">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-white/80">Create a new order</div>
+          <OrderModal onCreated={load} />
+        </div>
+      </HoloPanel>
+
+      {/* LANDMARK: Order Lanes (ARRIVED excluded) */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <Lane title="Pending" color="amber" items={grouped.PENDING} reload={load} />
+        <Lane title="Backordered" color="rose" items={grouped.BACKORDERED} reload={load} />
+        <Lane title="Special" color="purple" items={grouped.SPECIAL} reload={load} />
+      </div>
+    </div>
+  );
+}
+
+function Lane({
+  title,
+  color,
+  items,
+  reload,
+}: {
+  title: string;
+  color: string;
+  items: VOrderEnriched[];
+  reload: () => void;
+}) {
+  return (
+    <div>
+      <div className="mb-2 text-white/70 uppercase tracking-widest text-xs">{title}</div>
+      <div className="space-y-3">
+        {items.map((o) => (
+          <OrderCard key={o.id} order={o} onRefresh={reload} />
+        ))}
+        {items.length === 0 && <EmptyLane text={`No ${title.toLowerCase()} orders`} />}
+      </div>
     </div>
   );
 }
 
 function EmptyLane({ text }: { text: string }) {
   return (
-    <div className="holo-glass p-4 text-sm text-white/60">{text}</div>
+    <HoloPanel railColor="cyan">
+      <div className="text-sm text-white/60">{text}</div>
+    </HoloPanel>
   );
 }
