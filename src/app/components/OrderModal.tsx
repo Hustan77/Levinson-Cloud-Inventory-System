@@ -9,8 +9,8 @@ import { Casket, Supplier, Urn, CreateOrderInput } from "../../lib/types";
 type Mode = "create" | "update";
 
 type Props = {
-  mode: Mode;
-  trigger: React.ReactNode;
+  mode?: Mode; // default create if not provided
+  trigger?: React.ReactNode; // if omitted, renders a default "Create Order" button (handy for dashboard)
   suppliers: Supplier[];
   caskets: Casket[];
   urns: Urn[];
@@ -27,11 +27,24 @@ type Props = {
     status: "PENDING" | "BACKORDERED" | "ARRIVED" | "SPECIAL";
     deceased_name: string | null;
   };
+  /** Older pages may pass onCreated; newer code uses onDone. We support both. */
+  onCreated?: () => void;
   onDone?: () => void;
 };
 
 export function OrderModal(props: Props) {
-  const { mode, trigger, suppliers, caskets, urns, initial, orderId, onDone } = props;
+  const {
+    mode = "create",
+    trigger,
+    suppliers,
+    caskets,
+    urns,
+    initial,
+    orderId,
+    onCreated,
+    onDone,
+  } = props;
+
   const [open, setOpen] = useState(false);
 
   // LANDMARK: form state
@@ -42,7 +55,9 @@ export function OrderModal(props: Props) {
   const [expected, setExpected] = useState<string>(initial?.expected_date ?? "");
   const [backordered, setBackordered] = useState<boolean>(initial?.backordered ?? false);
   const [tbd, setTbd] = useState<boolean>(initial?.tbd_expected ?? false);
-  const [special, setSpecial] = useState<boolean>(initial?.status === "SPECIAL" || (initial?.item_id == null && !!initial?.item_name) || false);
+  const [special, setSpecial] = useState<boolean>(
+    initial?.status === "SPECIAL" || (initial?.item_id == null && !!initial?.item_name) || false
+  );
   const [deceased, setDeceased] = useState<string>(initial?.deceased_name ?? "");
   const [specialSupplier, setSpecialSupplier] = useState<number | "">(initial?.supplier_id ?? "");
 
@@ -56,7 +71,9 @@ export function OrderModal(props: Props) {
       setExpected(initial?.expected_date ?? "");
       setBackordered(initial?.backordered ?? false);
       setTbd(initial?.tbd_expected ?? false);
-      setSpecial(initial?.status === "SPECIAL" || (initial?.item_id == null && !!initial?.item_name) || false);
+      setSpecial(
+        initial?.status === "SPECIAL" || (initial?.item_id == null && !!initial?.item_name) || false
+      );
       setDeceased(initial?.deceased_name ?? "");
       setSpecialSupplier(initial?.supplier_id ?? "");
     }
@@ -65,19 +82,19 @@ export function OrderModal(props: Props) {
 
   // derive supplier for non-special orders
   const derivedSupplierId = useMemo(() => {
-    if (special) return (specialSupplier === "" ? null : Number(specialSupplier));
+    if (special) return specialSupplier === "" ? null : Number(specialSupplier);
     if (itemType === "casket") {
-      const found = caskets.find(c => c.id === (itemId === "" ? -1 : Number(itemId)));
+      const found = caskets.find((c) => c.id === (itemId === "" ? -1 : Number(itemId)));
       return found?.supplier_id ?? null;
     }
-    const found = urns.find(u => u.id === (itemId === "" ? -1 : Number(itemId)));
+    const found = urns.find((u) => u.id === (itemId === "" ? -1 : Number(itemId)));
     return found?.supplier_id ?? null;
   }, [special, specialSupplier, itemType, itemId, caskets, urns]);
 
   const supplierInstructions = useMemo(() => {
     const sid = derivedSupplierId;
     if (!sid) return null;
-    const s = suppliers.find(x => x.id === sid);
+    const s = suppliers.find((x) => x.id === sid);
     return s?.ordering_instructions ?? null;
   }, [derivedSupplierId, suppliers]);
 
@@ -118,7 +135,7 @@ export function OrderModal(props: Props) {
     if (mode === "create") {
       const payload: CreateOrderInput = {
         item_type: itemType,
-        item_id: special ? null : (itemId === "" ? null : Number(itemId)),
+        item_id: special ? null : itemId === "" ? null : Number(itemId),
         item_name: special ? itemName : null,
         po_number: po.trim(),
         expected_date: expected || null,
@@ -126,16 +143,21 @@ export function OrderModal(props: Props) {
         tbd_expected: tbd,
         special_order: special,
         deceased_name: special ? (deceased?.trim() || null) : null,
-        supplier_id: special ? (specialSupplier === "" ? null : Number(specialSupplier)) : null
+        supplier_id: special ? (specialSupplier === "" ? null : Number(specialSupplier)) : null,
       };
-      const res = await fetch("/api/orders", { method: "POST", body: JSON.stringify(payload) });
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) {
         const txt = await res.text();
         alert(`Create failed: ${txt}`);
         return;
       }
       setOpen(false);
+      // support both callbacks
       onDone?.();
+      onCreated?.();
       return;
     }
 
@@ -147,8 +169,8 @@ export function OrderModal(props: Props) {
         po_number: po.trim(),
         expected_date: expected || null,
         backordered,
-        tbd_expected: tbd
-      })
+        tbd_expected: tbd,
+      }),
     });
     if (!res.ok) {
       const txt = await res.text();
@@ -157,13 +179,18 @@ export function OrderModal(props: Props) {
     }
     setOpen(false);
     onDone?.();
+    onCreated?.();
   }
 
   const items = itemType === "casket" ? caskets : urns;
 
+  const TriggerButton = trigger ?? (
+    <Button variant="default">Create Order</Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogTrigger asChild>{TriggerButton}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "Create Order" : "Update Order"}</DialogTitle>
@@ -176,8 +203,8 @@ export function OrderModal(props: Props) {
             <select
               className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
               value={itemType}
-              onChange={(e)=>setItemType(e.target.value as "casket"|"urn")}
-              disabled={mode==="update"}
+              onChange={(e) => setItemType(e.target.value as "casket" | "urn")}
+              disabled={mode === "update"}
             >
               <option value="casket">Casket</option>
               <option value="urn">Urn</option>
@@ -189,8 +216,8 @@ export function OrderModal(props: Props) {
               type="checkbox"
               className="accent-emerald-400"
               checked={special}
-              onChange={(e)=>setSpecial(e.target.checked)}
-              disabled={mode==="update"}
+              onChange={(e) => setSpecial(e.target.checked)}
+              disabled={mode === "update"}
             />
             <span className="text-sm">Special Order</span>
           </label>
@@ -203,12 +230,14 @@ export function OrderModal(props: Props) {
               <select
                 className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
                 value={itemId === "" ? "" : String(itemId)}
-                onChange={(e)=>onPickItem(e.target.value)}
-                disabled={mode==="update"}
+                onChange={(e) => onPickItem(e.target.value)}
+                disabled={mode === "update"}
               >
                 <option value="">—</option>
-                {items.map(i => (
-                  <option key={i.id} value={i.id}>{i.name}</option>
+                {items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -216,9 +245,7 @@ export function OrderModal(props: Props) {
               <div className="text-xs text-white/60">Supplier (auto)</div>
               <Input value={derivedSupplierId ?? ""} readOnly />
               {supplierInstructions && (
-                <div className="text-xs text-emerald-300/80 mt-1">
-                  {supplierInstructions}
-                </div>
+                <div className="text-xs text-emerald-300/80 mt-1">{supplierInstructions}</div>
               )}
             </div>
           </div>
@@ -226,22 +253,36 @@ export function OrderModal(props: Props) {
           <div className="grid md:grid-cols-2 gap-3">
             <div className="space-y-1">
               <div className="text-xs text-white/60">Custom Item Name</div>
-              <Input value={itemName} onChange={(e)=>setItemName(e.target.value)} placeholder="e.g., Custom Casket X" />
+              <Input
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                placeholder="e.g., Custom Casket X"
+              />
             </div>
             <div className="space-y-1">
               <div className="text-xs text-white/60">Supplier (optional)</div>
               <select
                 className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-2 text-sm [&>option]:bg-white [&>option]:text-black"
                 value={specialSupplier}
-                onChange={(e)=>setSpecialSupplier(e.target.value ? Number(e.target.value) : "")}
+                onChange={(e) =>
+                  setSpecialSupplier(e.target.value ? Number(e.target.value) : "")
+                }
               >
                 <option value="">—</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="md:col-span-2 space-y-1">
               <div className="text-xs text-white/60">Name of Deceased (optional)</div>
-              <Input value={deceased} onChange={(e)=>setDeceased(e.target.value)} placeholder="Only for special orders" />
+              <Input
+                value={deceased}
+                onChange={(e) => setDeceased(e.target.value)}
+                placeholder="Only for special orders"
+              />
             </div>
           </div>
         )}
@@ -249,14 +290,14 @@ export function OrderModal(props: Props) {
         <div className="grid md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <div className="text-xs text-white/60">PO#</div>
-            <Input value={po} onChange={(e)=>setPo(e.target.value)} placeholder="Required" />
+            <Input value={po} onChange={(e) => setPo(e.target.value)} placeholder="Required" />
           </div>
           <div className="space-y-1">
             <div className="text-xs text-white/60">Expected Delivery</div>
             <Input
               type="date"
               value={expected ?? ""}
-              onChange={(e)=>setExpected(e.target.value)}
+              onChange={(e) => setExpected(e.target.value)}
               disabled={backordered && tbd}
             />
             <div className="flex items-center gap-3 mt-2">
@@ -265,7 +306,7 @@ export function OrderModal(props: Props) {
                   type="checkbox"
                   className="accent-rose-400"
                   checked={backordered}
-                  onChange={(e)=>toggleBackordered(e.target.checked)}
+                  onChange={(e) => toggleBackordered(e.target.checked)}
                 />
                 <span className="text-sm">Backordered</span>
               </label>
@@ -274,7 +315,7 @@ export function OrderModal(props: Props) {
                   type="checkbox"
                   className="accent-amber-400"
                   checked={tbd}
-                  onChange={(e)=>setTbd(e.target.checked)}
+                  onChange={(e) => setTbd(e.target.checked)}
                   disabled={!backordered}
                 />
                 <span className="text-sm">TBD</span>
@@ -284,8 +325,12 @@ export function OrderModal(props: Props) {
         </div>
 
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={()=>setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={!!uiError}>{mode==="create" ? "Create" : "Save"}</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!!uiError}>
+            {mode === "create" ? "Create" : "Save"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
