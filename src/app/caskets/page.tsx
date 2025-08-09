@@ -1,14 +1,39 @@
 "use client";
 
+/**
+ * CASKETS: compact card actions with icon buttons (edit, adjust, delete)
+ * - LANDMARKS are sprinkled for quick scanning.
+ * - No extra deps: icons are inline SVGs.
+ */
+
 import React, { useEffect, useMemo, useState } from "react";
 import { HoloPanel } from "../components/HoloPanel";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import type { Casket, Supplier } from "../../lib/types";
 
+// Tiny inline SVGs (no new packages)
+// LANDMARK: Icon sprites
+const IconEdit = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"/>
+    <path d="M20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/>
+  </svg>
+);
+const IconAdjust = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
+    <path d="M11 11V3h2v8h8v2h-8v8h-2v-8H3v-2h8z" fill="currentColor"/>
+  </svg>
+);
+const IconTrash = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...props}>
+    <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" fill="currentColor"/>
+  </svg>
+);
+
 type Filters = {
   supplier: number | "";
-  material: "" | "Wood" | "Metal" | "Green Burial";
+  material: "" | "WOOD" | "METAL" | "GREEN";
   jewish: "" | "yes" | "no";
   green: "" | "yes" | "no";
   minEW?: string; maxEW?: string; minEL?: string; maxEL?: string; minEH?: string; maxEH?: string;
@@ -35,7 +60,7 @@ export default function CasketsPage() {
   const filtered = useMemo(() => {
     return rows.filter(r => {
       if (filters.supplier && r.supplier_id !== filters.supplier) return false;
-      if (filters.material && r.material !== filters.material) return false;
+      if (filters.material && (r.material as any) !== filters.material) return false;
       if (filters.jewish === "yes" && !r.jewish) return false;
       if (filters.jewish === "no"  && r.jewish) return false;
       if (filters.green  === "yes" && !r.green) return false;
@@ -80,7 +105,7 @@ export default function CasketsPage() {
         <Button variant="default" onClick={()=>setOpenModal({ mode: "add" })}>Add Casket</Button>
       </div>
 
-      {/* LANDMARK: Filters */}
+      {/* LANDMARK: Filters (explicit header so intent is clear) */}
       <HoloPanel railColor="cyan">
         <div className="text-xs text-white/60 mb-2">Filters</div>
         <div className="grid md:grid-cols-6 gap-2">
@@ -91,9 +116,9 @@ export default function CasketsPage() {
 
           <LabeledSelect label="Material" value={filters.material} onChange={(v)=>setFilters(f=>({...f, material: v as any}))}>
             <option value="">Any</option>
-            <option>Wood</option>
-            <option>Metal</option>
-            <option>Green Burial</option>
+            <option value="WOOD">Wood</option>
+            <option value="METAL">Metal</option>
+            <option value="GREEN">Green</option>
           </LabeledSelect>
 
           <LabeledSelect label="Jewish" value={filters.jewish} onChange={(v)=>setFilters(f=>({...f, jewish: v as any}))}>
@@ -121,11 +146,41 @@ export default function CasketsPage() {
         </div>
       </HoloPanel>
 
-      {/* LANDMARK: Cards grid */}
+      {/* LANDMARK: Cards grid with compact icon actions */}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         {filtered.map(row => (
-          <HoloPanel key={row.id} railColor="purple" className="min-h-[220px]">
-            <div className="flex items-start justify-between">
+          <HoloPanel key={row.id} railColor="purple" className="min-h-[220px] relative">
+            {/* Icon bar */}
+            <div className="absolute right-2 top-2 flex items-center gap-1">
+              <IconButton
+                label="Edit"
+                onClick={()=>setOpenModal({ mode: "edit", row })}
+                ariaLabel={`Edit ${row.name}`}
+              >
+                <IconEdit className="text-white/80" />
+              </IconButton>
+              <IconButton
+                label="Adjust on‑hand"
+                onClick={()=>setAdjusting(row)}
+                ariaLabel={`Adjust on hand for ${row.name}`}
+              >
+                <IconAdjust className="text-emerald-300" />
+              </IconButton>
+              <IconButton
+                label="Delete"
+                onClick={async ()=>{
+                  if(!confirm("Delete this casket?")) return;
+                  const res = await fetch(`/api/caskets/${row.id}`, { method: "DELETE" });
+                  if(!res.ok){ alert(await res.text()); return; }
+                  load();
+                }}
+                ariaLabel={`Delete ${row.name}`}
+              >
+                <IconTrash className="text-rose-400" />
+              </IconButton>
+            </div>
+
+            <div className="flex items-start justify-between pr-16">
               <div>
                 <div className="text-white/90">{row.name}</div>
                 <div className="text-xs text-white/60 mt-1">
@@ -150,16 +205,6 @@ export default function CasketsPage() {
                     {isFull(row) ? "Full" : `Short by ${shortBy(row)}`}
                   </div>
                 </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Button size="sm" variant="outline" onClick={()=>setOpenModal({ mode: "edit", row })}>Edit</Button>
-                <Button size="sm" variant="outline" onClick={()=>setAdjusting(row)}>Adjust On‑Hand</Button>
-                <Button size="sm" variant="outline" onClick={async ()=>{
-                  if(!confirm("Delete this casket?")) return;
-                  const res = await fetch(`/api/caskets/${row.id}`, { method: "DELETE" });
-                  if(!res.ok){ alert(await res.text()); return; }
-                  load();
-                }}>Delete</Button>
               </div>
             </div>
           </HoloPanel>
@@ -219,6 +264,31 @@ function Dim({ label, min, max, onMin, onMax }: { label: string; min?: string; m
   );
 }
 
+/* LANDMARK: Tiny icon button with tooltip */
+function IconButton({
+  label, children, onClick, ariaLabel
+}: { label:string; children:React.ReactNode; onClick:()=>void; ariaLabel?:string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel ?? label}
+      title={label}
+      className="
+        inline-flex items-center justify-center
+        h-7 w-7 rounded-md
+        bg-white/5 hover:bg-white/10
+        border border-white/10
+        shadow
+        transition ease-[cubic-bezier(.2,.8,.2,1)] duration-150
+        focus:outline-none focus:ring-2 focus:ring-cyan-400/60
+      "
+    >
+      {children}
+    </button>
+  );
+}
+
 /* LANDMARK: Casket Modal (Add/Edit) — Target only editable; Jewish & Green side-by-side */
 function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   mode: "add"|"edit";
@@ -235,7 +305,7 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
   const [intW, setIntW] = useState<string>(row?.int_width_in?.toString() ?? "");
   const [intL, setIntL] = useState<string>(row?.int_length_in?.toString() ?? "");
   const [intH, setIntH] = useState<string>(row?.int_height_in?.toString() ?? "");
-  const [material, setMaterial] = useState<Casket["material"]>(row?.material ?? "Wood");
+  const [material, setMaterial] = useState<"WOOD"|"METAL"|"GREEN">(row?.material as any ?? "WOOD");
   const [jewish, setJewish] = useState<boolean>(row?.jewish ?? false);
   const [green, setGreen] = useState<boolean>(row?.green ?? false);
   const [target, setTarget] = useState<string>((row?.target_qty ?? 0).toString());
@@ -285,7 +355,7 @@ function CasketModal({ mode, row, suppliers, onClose, onSaved }:{
           <div className="space-y-1">
             <div className="label-xs">Material</div>
             <select className="select-sm w-full" value={material} onChange={e=>setMaterial(e.target.value as any)}>
-              <option>Wood</option><option>Metal</option><option>Green Burial</option>
+              <option value="WOOD">Wood</option><option value="METAL">Metal</option><option value="GREEN">Green</option>
             </select>
           </div>
 
