@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * LANDMARK: Caskets Page — Inventory‑only with clear layout + advanced filters
- * - NO order information and NO notes (per requirement).
- * - Status: FULL / SHORT by N / NONE ON HAND (computed from on_hand, on_order, target_qty).
- * - Clean card layout: title/status, supplier+category row, inventory tiles, two slabs for dimensions.
- * - Advanced filters (collapsible): supplier, status, material (Wood/Metal/Green Burial),
- *   Jewish, Green, and numeric ranges for Exterior/Interior (W/L/H).
+ * Caskets — Inventory-only (no order info)
+ * - Clear layout, ample spacing
+ * - Dimensions render (tolerates ext_width|ext_w, etc.)
+ * - Advanced filters with Supplier, Status, Material + Jewish/Green checkboxes
+ * - Range filters for Exterior + Interior W/L/H
+ * - Status badge: FULL / SHORT by N / NONE ON HAND
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -15,9 +15,16 @@ import type { Casket, Supplier } from "@/lib/types";
 import { Input } from "../components/ui/input";
 
 type Status = "FULL" | "SHORT" | "NONE";
+type Range = { min?: number | ""; max?: number | "" };
+
+function asNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 function computeStatus(onHand: number, onOrder: number, target: number | null): { status: Status; deficit: number } {
-  if (onHand <= 0) return { status: "NONE", deficit: target != null ? Math.max(target - (onHand + onOrder), 0) : 0 };
+  if (onHand <= 0) return { status: "NONE", deficit: Math.max((target ?? 0) - (onHand + onOrder), 0) };
   if (target != null && onHand + onOrder < target) {
     return { status: "SHORT", deficit: Math.max(target - (onHand + onOrder), 0) };
   }
@@ -35,22 +42,26 @@ function statusColors(s: Status) {
   }
 }
 
-type Range = { min?: number | ""; max?: number | "" };
-
 export default function CasketsPage() {
-  // LANDMARK: data state
-  const [caskets, setCaskets] = useState<Casket[]>([]);
+  const [rows, setRows] = useState<Casket[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
-  // LANDMARK: basic search + advanced filters
+  // basic search
   const [q, setQ] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+
+  // advanced filter toggle
+  const [showFilters, setShowFilters] = useState(true);
+
+  // filters
   const [supplierId, setSupplierId] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | Status>("ALL");
   const [material, setMaterial] = useState<"" | "WOOD" | "METAL" | "GREEN">("");
-  const [jewish, setJewish] = useState<"" | "YES" | "NO">("");
-  const [green, setGreen] = useState<"" | "YES" | "NO">("");
+  const [isJewish, setIsJewish] = useState(false);
+  const [onlyJewish, setOnlyJewish] = useState(false);
+  const [isGreen, setIsGreen] = useState(false);
+  const [onlyGreen, setOnlyGreen] = useState(false);
 
+  // numeric ranges
   const [extW, setExtW] = useState<Range>({});
   const [extL, setExtL] = useState<Range>({});
   const [extH, setExtH] = useState<Range>({});
@@ -58,81 +69,79 @@ export default function CasketsPage() {
   const [intL, setIntL] = useState<Range>({});
   const [intH, setIntH] = useState<Range>({});
 
-  // LANDMARK: fetch
   useEffect(() => {
     (async () => {
       const [cs, ss] = await Promise.all([
         fetch("/api/caskets").then((r) => r.json()),
         fetch("/api/suppliers").then((r) => r.json()),
       ]);
-      setCaskets(cs ?? []);
+      setRows(cs ?? []);
       setSuppliers(ss ?? []);
     })();
   }, []);
 
-  // LANDMARK: helper for safe number compare
-  const inRange = (value: unknown, range: Range) => {
-    const v = typeof value === "number" ? value : value == null ? null : Number(value);
-    if (v == null || Number.isNaN(v)) return true; // if item missing value, don't exclude by range
-    const { min, max } = range;
-    if (min !== undefined && min !== "" && v < Number(min)) return false;
-    if (max !== undefined && max !== "" && v > Number(max)) return false;
+  const inRange = (value: number | null, r: Range) => {
+    if (value === null) return true;
+    if (r.min !== undefined && r.min !== "" && value < Number(r.min)) return false;
+    if (r.max !== undefined && r.max !== "" && value > Number(r.max)) return false;
     return true;
   };
 
-  // LANDMARK: filtering
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-
-    return caskets.filter((c) => {
-      const sname = suppliers.find((s) => s.id === (c as any).supplier_id)?.name ?? "";
+    return rows.filter((c: any) => {
+      const sname = suppliers.find((s) => s.id === c.supplier_id)?.name ?? "";
       if (term && !(`${c.name} ${sname}`.toLowerCase().includes(term))) return false;
 
-      const onHand = (c as any).on_hand ?? 0;
-      const onOrder = (c as any).on_order ?? 0;
-      const target = (c as any).target_qty ?? null;
+      // status
+      const onHand = asNum(c.on_hand) ?? 0;
+      const onOrder = asNum(c.on_order) ?? 0;
+      const target = asNum(c.target_qty);
       const { status } = computeStatus(onHand, onOrder, target);
       if (statusFilter !== "ALL" && status !== statusFilter) return false;
 
-      if (supplierId !== "" && (c as any).supplier_id !== supplierId) return false;
+      // supplier
+      if (supplierId !== "" && c.supplier_id !== supplierId) return false;
 
-      const mat = (c as any).material ?? null; // "WOOD" | "METAL" | "GREEN"
-      if (material && mat !== material) return false;
+      // material
+      if (material && c.material !== material) return false;
 
-      const jw = !!(c as any).jewish;
-      if (jewish === "YES" && !jw) return false;
-      if (jewish === "NO" && jw) return false;
+      // jewish / green checkboxes:
+      // - “is” toggles enable the filter section, “only” narrows to true
+      if (isJewish && onlyJewish && !c.jewish) return false;
+      if (isJewish && !onlyJewish && c.jewish === false) {
+        // if filter is enabled but not “only”, allow both — no-op
+      }
+      if (isGreen && onlyGreen && !c.green) return false;
 
-      const gr = !!(c as any).green;
-      if (green === "YES" && !gr) return false;
-      if (green === "NO" && gr) return false;
+      // dimensions (tolerant of multiple column names)
+      const EW = asNum(c.ext_width ?? c.ext_w);
+      const EL = asNum(c.ext_length ?? c.ext_l);
+      const EH = asNum(c.ext_height ?? c.ext_h);
+      const IW = asNum(c.int_width ?? c.int_w);
+      const IL = asNum(c.int_length ?? c.int_l);
+      const IH = asNum(c.int_height ?? c.int_h);
 
-      // Dimensions (tolerant if missing)
-      const ew = (c as any).ext_width ?? null;
-      const el = (c as any).ext_length ?? null;
-      const eh = (c as any).ext_height ?? null;
-      const iw = (c as any).int_width ?? null;
-      const il = (c as any).int_length ?? null;
-      const ih = (c as any).int_height ?? null;
-
-      if (!inRange(ew, extW)) return false;
-      if (!inRange(el, extL)) return false;
-      if (!inRange(eh, extH)) return false;
-      if (!inRange(iw, intW)) return false;
-      if (!inRange(il, intL)) return false;
-      if (!inRange(ih, intH)) return false;
+      if (!inRange(EW, extW)) return false;
+      if (!inRange(EL, extL)) return false;
+      if (!inRange(EH, extH)) return false;
+      if (!inRange(IW, intW)) return false;
+      if (!inRange(IL, intL)) return false;
+      if (!inRange(IH, intH)) return false;
 
       return true;
     });
   }, [
-    caskets,
+    rows,
     suppliers,
     q,
     supplierId,
     statusFilter,
     material,
-    jewish,
-    green,
+    isJewish,
+    onlyJewish,
+    isGreen,
+    onlyGreen,
     extW,
     extL,
     extH,
@@ -141,12 +150,11 @@ export default function CasketsPage() {
     intH,
   ]);
 
-  // LANDMARK: small helper for numeric inputs
   const num = (v: string) => (v === "" ? "" : Number(v));
 
   return (
     <div className="p-6 space-y-4">
-      {/* LANDMARK: Header + search + filters toggle */}
+      {/* LANDMARK: header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-white/90 text-lg">Caskets</h1>
         <div className="flex items-center gap-3 w-full md:w-auto">
@@ -168,15 +176,14 @@ export default function CasketsPage() {
         </div>
       </div>
 
-      {/* LANDMARK: Advanced filters panel */}
+      {/* LANDMARK: filters */}
       {showFilters && (
-        <HoloPanel rail railColor="cyan" className="space-y-3">
-          {/* Top row */}
-          <div className="grid md:grid-cols-4 gap-3">
+        <HoloPanel rail railColor="cyan" className="space-y-4 p-4">
+          <div className="grid lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-[11px] text-white/60 mb-1">Supplier</label>
               <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-9 px-2 text-white/80"
+                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
                 value={supplierId === "" ? "" : supplierId}
                 onChange={(e) => setSupplierId(e.target.value === "" ? "" : Number(e.target.value))}
               >
@@ -192,7 +199,7 @@ export default function CasketsPage() {
             <div>
               <label className="block text-[11px] text-white/60 mb-1">Status</label>
               <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-9 px-2 text-white/80"
+                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
               >
@@ -206,7 +213,7 @@ export default function CasketsPage() {
             <div>
               <label className="block text-[11px] text-white/60 mb-1">Material</label>
               <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-9 px-2 text-white/80"
+                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
                 value={material}
                 onChange={(e) => setMaterial(e.target.value as any)}
               >
@@ -218,204 +225,100 @@ export default function CasketsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-white/60 mb-1">Jewish</label>
-                <select
-                  className="w-full bg-transparent border border-white/10 rounded-md h-9 px-2 text-white/80"
-                  value={jewish}
-                  onChange={(e) => setJewish(e.target.value as any)}
-                >
-                  <option value="">Any</option>
-                  <option value="YES">Yes</option>
-                  <option value="NO">No</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-white/60 mb-1">Green</label>
-                <select
-                  className="w-full bg-transparent border border-white/10 rounded-md h-9 px-2 text-white/80"
-                  value={green}
-                  onChange={(e) => setGreen(e.target.value as any)}
-                >
-                  <option value="">Any</option>
-                  <option value="YES">Yes</option>
-                  <option value="NO">No</option>
-                </select>
-              </div>
+              <label className="flex items-center gap-2 text-white/80">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={isJewish}
+                  onChange={(e) => setIsJewish(e.target.checked)}
+                />
+                Jewish filter
+              </label>
+              <label className="flex items-center gap-2 text-white/80">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={onlyJewish}
+                  onChange={(e) => setOnlyJewish(e.target.checked)}
+                  disabled={!isJewish}
+                />
+                Jewish only
+              </label>
+              <label className="flex items-center gap-2 text-white/80">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={isGreen}
+                  onChange={(e) => setIsGreen(e.target.checked)}
+                />
+                Green filter
+              </label>
+              <label className="flex items-center gap-2 text-white/80">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={onlyGreen}
+                  onChange={(e) => setOnlyGreen(e.target.checked)}
+                  disabled={!isGreen}
+                />
+                Green only
+              </label>
             </div>
           </div>
 
-          {/* Dimensions grid */}
-          <div className="grid lg:grid-cols-2 gap-4">
+          {/* dimension ranges */}
+          <div className="grid xl:grid-cols-2 gap-4">
             <div className="rounded-xl border border-white/10 bg-white/5 p-3">
               <div className="text-[11px] text-white/60 mb-2">Exterior (inches)</div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <div className="text-[11px] text-white/50">Width</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={extW.min ?? ""}
-                      onChange={(e) => setExtW((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={extW.max ?? ""}
-                      onChange={(e) => setExtW((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-white/50">Length</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={extL.min ?? ""}
-                      onChange={(e) => setExtL((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={extL.max ?? ""}
-                      onChange={(e) => setExtL((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-white/50">Height</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={extH.min ?? ""}
-                      onChange={(e) => setExtH((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={extH.max ?? ""}
-                      onChange={(e) => setExtH((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <DimRange label="Width" value={extW} onChange={setExtW} />
+                <DimRange label="Length" value={extL} onChange={setExtL} />
+                <DimRange label="Height" value={extH} onChange={setExtH} />
               </div>
             </div>
-
             <div className="rounded-xl border border-white/10 bg-white/5 p-3">
               <div className="text-[11px] text-white/60 mb-2">Interior (inches)</div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <div className="text-[11px] text-white/50">Width</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={intW.min ?? ""}
-                      onChange={(e) => setIntW((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={intW.max ?? ""}
-                      onChange={(e) => setIntW((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-white/50">Length</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={intL.min ?? ""}
-                      onChange={(e) => setIntL((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={intL.max ?? ""}
-                      onChange={(e) => setIntL((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-white/50">Height</div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="min"
-                      value={intH.min ?? ""}
-                      onChange={(e) => setIntH((r) => ({ ...r, min: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                    <Input
-                      placeholder="max"
-                      value={intH.max ?? ""}
-                      onChange={(e) => setIntH((r) => ({ ...r, max: num(e.target.value) }))}
-                      className="h-8"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <DimRange label="Width" value={intW} onChange={setIntW} />
+                <DimRange label="Length" value={intL} onChange={setIntL} />
+                <DimRange label="Height" value={intH} onChange={setIntH} />
               </div>
             </div>
           </div>
         </HoloPanel>
       )}
 
-      {/* LANDMARK: Card grid */}
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-        {filtered.map((c) => {
-          const s = suppliers.find((x) => x.id === (c as any).supplier_id) || null;
+      {/* grid */}
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+        {filtered.map((c: any) => {
+          const s = suppliers.find((x) => x.id === c.supplier_id) || null;
 
-          const onHand = (c as any).on_hand ?? 0;
-          const onOrder = (c as any).on_order ?? 0;
-          const target = (c as any).target_qty ?? null;
+          const onHand = asNum(c.on_hand) ?? 0;
+          const onOrder = asNum(c.on_order) ?? 0;
+          const target = asNum(c.target_qty);
 
           const { status, deficit } = computeStatus(onHand, onOrder, target);
           const { rail, badge } = statusColors(status);
 
-          const mat = (c as any).material ?? null; // "WOOD" | "METAL" | "GREEN"
-          const jewish = !!(c as any).jewish;
-          const greenFlag = !!(c as any).green;
-
-          // LANDMARK: Ensure dimensions display (names match schema in repo)
-          const ew = (c as any).ext_width ?? null;
-          const el = (c as any).ext_length ?? null;
-          const eh = (c as any).ext_height ?? null;
-          const iw = (c as any).int_width ?? null;
-          const il = (c as any).int_length ?? null;
-          const ih = (c as any).int_height ?? null;
+          const ew = asNum(c.ext_width ?? c.ext_w);
+          const el = asNum(c.ext_length ?? c.ext_l);
+          const eh = asNum(c.ext_height ?? c.ext_h);
+          const iw = asNum(c.int_width ?? c.int_w);
+          const il = asNum(c.int_length ?? c.int_l);
+          const ih = asNum(c.int_height ?? c.int_h);
 
           return (
             <HoloPanel key={c.id} rail railColor={rail} className="flex flex-col gap-4 p-4">
-              {/* LANDMARK: Title + status */}
+              {/* title + status */}
               <div className="flex items-start gap-2">
                 <div className="text-white/90 text-sm truncate">{c.name}</div>
                 <div className={`ml-auto text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border ${badge}`}>
-                  {status === "NONE"
-                    ? "NONE ON HAND"
-                    : status === "SHORT"
-                    ? `SHORT by ${deficit}`
-                    : "FULL"}
+                  {status === "NONE" ? "NONE ON HAND" : status === "SHORT" ? `SHORT by ${deficit}` : "FULL"}
                 </div>
               </div>
 
-              {/* LANDMARK: Supplier / Category row */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/70">
+              {/* meta */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-white/70">
                 <div className="truncate">
                   <span className="text-white/50">Supplier:</span>{" "}
                   <span className="text-white/80">{s?.name ?? "—"}</span>
@@ -423,60 +326,95 @@ export default function CasketsPage() {
                 <div className="truncate">
                   <span className="text-white/50">Material:</span>{" "}
                   <span className="text-white/80">
-                    {mat === "WOOD" ? "Wood" : mat === "METAL" ? "Metal" : mat === "GREEN" ? "Green Burial" : "—"}
+                    {c.material === "WOOD" ? "Wood" : c.material === "METAL" ? "Metal" : c.material === "GREEN" ? "Green Burial" : "—"}
                   </span>
                 </div>
                 <div className="truncate">
                   <span className="text-white/50">Jewish:</span>{" "}
-                  <span className="text-white/80">{jewish ? "Yes" : "No"}</span>
+                  <span className="text-white/80">{c.jewish ? "Yes" : "No"}</span>
                 </div>
                 <div className="truncate">
                   <span className="text-white/50">Green:</span>{" "}
-                  <span className="text-white/80">{greenFlag ? "Yes" : "No"}</span>
+                  <span className="text-white/80">{c.green ? "Yes" : "No"}</span>
                 </div>
               </div>
 
-              {/* LANDMARK: Inventory tiles */}
+              {/* inventory tiles */}
               <div className="grid grid-cols-3 text-center text-[11px] text-white/70 gap-2">
-                <div className={`rounded-md border border-white/10 py-2 ${onHand === 0 ? "ring-1 ring-rose-400/60" : ""}`}>
-                  <div className="text-white/50">On Hand</div>
-                  <div className="text-white/90 text-sm">{onHand}</div>
-                </div>
-                <div className="rounded-md border border-white/10 py-2">
-                  <div className="text-white/50">On Order</div>
-                  <div className="text-white/90 text-sm">{onOrder}</div>
-                </div>
-                <div className={`rounded-md border border-white/10 py-2 ${target != null && onHand + onOrder < target ? "ring-1 ring-amber-400/60" : ""}`}>
-                  <div className="text-white/50">Target</div>
-                  <div className="text-white/90 text-sm">{target ?? "—"}</div>
-                </div>
+                <Tile label="On Hand" value={onHand} ring={onHand === 0 ? "ring-rose-400/60" : ""} />
+                <Tile label="On Order" value={onOrder} />
+                <Tile
+                  label="Target"
+                  value={target ?? "—"}
+                  ring={target != null && onHand + onOrder < target ? "ring-amber-400/60" : ""}
+                />
               </div>
 
-              {/* LANDMARK: Dimension slabs */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-white/60 text-[11px] mb-1">Exterior (inches)</div>
-                  <div className="text-white/80 text-sm">
-                    <span className="text-white/60">W</span> {ew ?? "—"}{" "}
-                    <span className="text-white/60">× L</span> {el ?? "—"}{" "}
-                    <span className="text-white/60">× H</span> {eh ?? "—"}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-white/60 text-[11px] mb-1">Interior (inches)</div>
-                  <div className="text-white/80 text-sm">
-                    <span className="text-white/60">W</span> {iw ?? "—"}{" "}
-                    <span className="text-white/60">× L</span> {il ?? "—"}{" "}
-                    <span className="text-white/60">× H</span> {ih ?? "—"}
-                  </div>
-                </div>
+              {/* dimensions */}
+              <div className="grid md:grid-cols-2 gap-3">
+                <DimSlab title="Exterior (inches)" w={ew} l={el} h={eh} />
+                <DimSlab title="Interior (inches)" w={iw} l={il} h={ih} />
               </div>
             </HoloPanel>
           );
         })}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-white/50 text-sm">No caskets.</div>
-        )}
+        {filtered.length === 0 && <div className="col-span-full text-white/50 text-sm">No caskets.</div>}
+      </div>
+    </div>
+  );
+}
+
+/* LANDMARK: tiny helpers */
+function DimRange({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: Range;
+  onChange: (next: Range) => void;
+}) {
+  const asNum = (v: string) => (v === "" ? "" : Number(v));
+  return (
+    <div>
+      <div className="text-[11px] text-white/50 mb-1">{label}</div>
+      <div className="flex gap-2">
+        <Input
+          placeholder="min"
+          value={value.min ?? ""}
+          onChange={(e) => onChange({ ...value, min: asNum(e.target.value) })}
+          className="h-9"
+          inputMode="numeric"
+        />
+        <Input
+          placeholder="max"
+          value={value.max ?? ""}
+          onChange={(e) => onChange({ ...value, max: asNum(e.target.value) })}
+          className="h-9"
+          inputMode="numeric"
+        />
+      </div>
+    </div>
+  );
+}
+
+function Tile({ label, value, ring = "" }: { label: string; value: number | string; ring?: string }) {
+  return (
+    <div className={`rounded-md border border-white/10 py-2 ${ring ? `ring-1 ${ring}` : ""}`}>
+      <div className="text-white/50">{label}</div>
+      <div className="text-white/90 text-sm">{value}</div>
+    </div>
+  );
+}
+
+function DimSlab({ title, w, l, h }: { title: string; w: number | null; l: number | null; h: number | null }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className="text-white/60 text-[11px] mb-1">{title}</div>
+      <div className="text-white/80 text-sm leading-6">
+        <span className="text-white/60">W</span> {w ?? "—"}{" "}
+        <span className="text-white/60">× L</span> {l ?? "—"}{" "}
+        <span className="text-white/60">× H</span> {h ?? "—"}
       </div>
     </div>
   );
