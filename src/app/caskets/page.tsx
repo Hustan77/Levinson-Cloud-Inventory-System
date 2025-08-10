@@ -1,391 +1,329 @@
 "use client";
 
-/**
- * Caskets inventory page
- * - SINGLE Jewish / Green toggles (no extra filter chips)
- * - Crisp layout
- * - Dimensions: tolerant to many DB column names (ext_width/ext_w/exterior_width, etc.)
- */
-
 import React, { useEffect, useMemo, useState } from "react";
 import { HoloPanel } from "../components/HoloPanel";
-import type { Casket, Supplier } from "@/lib/types";
+import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import type { Casket, Supplier } from "@/lib/types";
 
-type Status = "FULL" | "SHORT" | "NONE";
-type Range = { min?: number | ""; max?: number | "" };
+const IconEdit = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor"/><path d="M20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>);
+const IconAdjust = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M11 11V3h2v8h8v2h-8v8h-2v-8H3v-2h8z" fill="currentColor"/></svg>);
+const IconTrash = (p: React.SVGProps<SVGSVGElement>) => (<svg viewBox="0 0 24 24" width="16" height="16" {...p}><path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z" fill="currentColor"/></svg>);
 
-const toNum = (v: any): number | null => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+type Filters = {
+  supplier: number | "";
+  material: "" | "WOOD" | "METAL" | "GREEN";
+  jewish: "" | "yes" | "no";
+  green: "" | "yes" | "no";
+  q: string;
+  minEW?: string; maxEW?: string; minEL?: string; maxEL?: string; minEH?: string; maxEH?: string;
+  minIW?: string; maxIW?: string; minIL?: string; maxIL?: string; minIH?: string; maxIH?: string;
 };
-
-const pickNumber = (obj: any, keys: string[]): number | null => {
-  for (const k of keys) {
-    if (k in obj) {
-      const n = toNum(obj[k]);
-      if (n !== null) return n;
-    }
-  }
-  return null;
-};
-
-function computeStatus(onHand: number, onOrder: number, target: number | null): { status: Status; deficit: number } {
-  if (onHand <= 0) return { status: "NONE", deficit: Math.max((target ?? 0) - (onHand + onOrder), 0) };
-  if (target != null && onHand + onOrder < target) {
-    return { status: "SHORT", deficit: Math.max(target - (onHand + onOrder), 0) };
-  }
-  return { status: "FULL", deficit: 0 };
-}
-
-function statusTheme(s: Status) {
-  switch (s) {
-    case "NONE":
-      return { rail: "rose", badge: "border-rose-400/60 text-rose-300 bg-rose-400/10" };
-    case "SHORT":
-      return { rail: "amber", badge: "border-amber-400/60 text-amber-300 bg-amber-400/10" };
-    default:
-      return { rail: "emerald", badge: "border-emerald-400/60 text-emerald-300 bg-emerald-400/10" };
-  }
-}
 
 export default function CasketsPage() {
-  const [rows, setRows] = useState<Casket[]>([]);
+  const [rows, setRows] = useState<(Casket & { on_order_live:number; backordered_live:number })[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<Filters>({ supplier:"", material:"", jewish:"", green:"", q:"" });
+  const [editRow, setEditRow] = useState<Casket | null>(null);
+  const [adjustRow, setAdjustRow] = useState<Casket | null>(null);
 
-  const [showFilters, setShowFilters] = useState(true);
-  const [supplierId, setSupplierId] = useState<number | "">("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | Status>("ALL");
-  const [material, setMaterial] = useState<"" | "WOOD" | "METAL" | "GREEN">("");
+  // edit form fields
+  const [fName, setFName] = useState(""); 
+  const [fSupplier, setFSupplier] = useState<number| "">("");
+  const [fMaterial, setFMaterial] = useState<"WOOD"|"METAL"|"GREEN">("WOOD");
+  const [fJewish, setFJewish] = useState(false);
+  const [fGreen, setFGreen] = useState(false);
+  const [fExtW, setFExtW] = useState<string>("");
+  const [fExtL, setFExtL] = useState<string>("");
+  const [fExtH, setFExtH] = useState<string>("");
+  const [fIntW, setFIntW] = useState<string>("");
+  const [fIntL, setFIntL] = useState<string>("");
+  const [fIntH, setFIntH] = useState<string>("");
+  const [fTarget, setFTarget] = useState<string>("");
 
-  const [onlyJewish, setOnlyJewish] = useState(false);
-  const [onlyGreen, setOnlyGreen] = useState(false);
+  const [formOnHand, setFormOnHand] = useState<number>(0);
 
-  const [extW, setExtW] = useState<Range>({});
-  const [extL, setExtL] = useState<Range>({});
-  const [extH, setExtH] = useState<Range>({});
-  const [intW, setIntW] = useState<Range>({});
-  const [intL, setIntL] = useState<Range>({});
-  const [intH, setIntH] = useState<Range>({});
+  async function load(){
+    const [c,s] = await Promise.all([
+      fetch("/api/caskets",{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/suppliers").then(r=>r.json()),
+    ]);
+    setRows(c); setSuppliers(s);
+  }
+  useEffect(()=>{ load(); },[]);
 
-  useEffect(() => {
-    (async () => {
-      const [cs, ss] = await Promise.all([
-        fetch("/api/caskets").then((r) => r.json()),
-        fetch("/api/suppliers").then((r) => r.json()),
-      ]);
-      setRows(cs ?? []);
-      setSuppliers(ss ?? []);
-    })();
-  }, []);
+  useEffect(()=>{
+    if(editRow){
+      setFName(editRow.name ?? "");
+      setFSupplier(editRow.supplier_id ?? "");
+      setFMaterial((editRow.material as any) ?? "WOOD");
+      setFJewish(!!editRow.jewish);
+      setFGreen(!!editRow.green);
+      setFExtW(editRow.ext_width_in?.toString() ?? "");
+      setFExtL(editRow.ext_length_in?.toString() ?? "");
+      setFExtH(editRow.ext_height_in?.toString() ?? "");
+      setFIntW(editRow.int_width_in?.toString() ?? "");
+      setFIntL(editRow.int_length_in?.toString() ?? "");
+      setFIntH(editRow.int_height_in?.toString() ?? "");
+      setFTarget(editRow.target_qty?.toString() ?? "0");
+    }
+    if(adjustRow){
+      setFormOnHand(adjustRow.on_hand ?? 0);
+    }
+  },[editRow,adjustRow]);
 
-  const inRange = (v: number | null, r: Range) => {
-    if (v === null) return true;
-    if (r.min !== undefined && r.min !== "" && v < Number(r.min)) return false;
-    if (r.max !== undefined && r.max !== "" && v > Number(r.max)) return false;
-    return true;
-  };
-
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return rows.filter((c: any) => {
-      const sname = suppliers.find((s) => Number(s.id) === Number(c.supplier_id))?.name ?? "";
-      if (term && !(`${c.name} ${sname}`.toLowerCase().includes(term))) return false;
-
-      if (supplierId !== "" && Number(c.supplier_id) !== Number(supplierId)) return false;
-      if (material && c.material !== material) return false;
-      if (onlyJewish && !c.jewish) return false;
-      if (onlyGreen && !c.green) return false;
-
-      const onHand = toNum(c.on_hand) ?? 0;
-      const onOrder = toNum(c.on_order) ?? 0;
-      const target = toNum(c.target_qty);
-      const { status } = computeStatus(onHand, onOrder, target);
-      if (statusFilter !== "ALL" && status !== statusFilter) return false;
-
-      const EW = pickNumber(c, ["ext_width", "ext_w", "exterior_width", "width_exterior", "extWidth"]);
-      const EL = pickNumber(c, ["ext_length", "ext_l", "exterior_length", "length_exterior", "extLength"]);
-      const EH = pickNumber(c, ["ext_height", "ext_h", "exterior_height", "height_exterior", "extHeight"]);
-      const IW = pickNumber(c, ["int_width", "int_w", "interior_width", "width_interior", "intWidth"]);
-      const IL = pickNumber(c, ["int_length", "int_l", "interior_length", "length_interior", "intLength"]);
-      const IH = pickNumber(c, ["int_height", "int_h", "interior_height", "height_interior", "intHeight"]);
-
-      if (!inRange(EW, extW)) return false;
-      if (!inRange(EL, extL)) return false;
-      if (!inRange(EH, extH)) return false;
-      if (!inRange(IW, intW)) return false;
-      if (!inRange(IL, intL)) return false;
-      if (!inRange(IH, intH)) return false;
-
+  const filtered = useMemo(()=>{
+    const within = (v:number|null|undefined, min?:string, max?:string) => {
+      if (v==null) return true;
+      if (min && v < Number(min)) return false;
+      if (max && v > Number(max)) return false;
+      return true;
+    };
+    return rows.filter(r=>{
+      if (filters.supplier !== "" && r.supplier_id !== filters.supplier) return false;
+      if (filters.material && (r.material as any) !== filters.material) return false;
+      if (filters.jewish==="yes" && !r.jewish) return false;
+      if (filters.jewish==="no"  && r.jewish) return false;
+      if (filters.green==="yes" && !r.green) return false;
+      if (filters.green==="no"  && r.green) return false;
+      if (!within(r.ext_width_in as any, filters.minEW, filters.maxEW)) return false;
+      if (!within(r.ext_length_in as any, filters.minEL, filters.maxEL)) return false;
+      if (!within(r.ext_height_in as any, filters.minEH, filters.maxEH)) return false;
+      if (!within(r.int_width_in as any, filters.minIW, filters.maxIW)) return false;
+      if (!within(r.int_length_in as any, filters.minIL, filters.maxIL)) return false;
+      if (!within(r.int_height_in as any, filters.minIH, filters.maxIH)) return false;
+      if (filters.q) {
+        const t = `${r.name}`.toLowerCase();
+        if (!t.includes(filters.q.toLowerCase())) return false;
+      }
       return true;
     });
-  }, [
-    rows,
-    suppliers,
-    q,
-    supplierId,
-    statusFilter,
-    material,
-    onlyJewish,
-    onlyGreen,
-    extW,
-    extL,
-    extH,
-    intW,
-    intL,
-    intH,
-  ]);
+  },[rows,filters]);
+
+  function available(r: any){ return (r.on_hand ?? 0) + (r.on_order_live ?? 0); }
+  function shortBy(r: any){ return Math.max(0, (r.target_qty ?? 0) - available(r)); }
+  function isFull(r: any){ return available(r) >= (r.target_qty ?? 0); }
 
   return (
     <div className="p-6 space-y-4">
-      {/* header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center justify-between">
         <h1 className="text-white/90 text-lg">Caskets</h1>
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="w-full max-w-sm">
-            <Input
-              className="input-sm"
-              placeholder="Search by name or supplier…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowFilters((v) => !v)}
-            className="h-9 px-3 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-          >
-            {showFilters ? "Hide filters" : "Advanced filters"}
-          </button>
-        </div>
+        <Button onClick={()=>setEditRow({} as any)}>Add Casket</Button>
       </div>
 
-      {/* filters */}
-      {showFilters && (
-        <HoloPanel rail railColor="cyan" className="space-y-4 p-4">
-          <div className="grid lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-[11px] text-white/60 mb-1">Supplier</label>
-              <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
-                value={supplierId === "" ? "" : supplierId}
-                onChange={(e) => setSupplierId(e.target.value === "" ? "" : Number(e.target.value))}
-              >
-                <option value="">Any</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-white/60 mb-1">Status</label>
-              <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-              >
-                <option value="ALL">All</option>
-                <option value="FULL">Full</option>
-                <option value="SHORT">Short</option>
-                <option value="NONE">None on hand</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-white/60 mb-1">Material</label>
-              <select
-                className="w-full bg-transparent border border-white/10 rounded-md h-10 px-2 text-white/80"
-                value={material}
-                onChange={(e) => setMaterial(e.target.value as any)}
-              >
-                <option value="">Any</option>
-                <option value="WOOD">Wood</option>
-                <option value="METAL">Metal</option>
-                <option value="GREEN">Green Burial</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-white/80">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
-                  checked={onlyJewish}
-                  onChange={(e) => setOnlyJewish(e.target.checked)}
-                />
-                Jewish only
-              </label>
-              <label className="flex items-center gap-2 text-white/80">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
-                  checked={onlyGreen}
-                  onChange={(e) => setOnlyGreen(e.target.checked)}
-                />
-                Green only
-              </label>
-            </div>
+      <HoloPanel railColor="cyan">
+        <div className="text-xs text-white/60 mb-2">Filters</div>
+        <div className="grid md:grid-cols-6 gap-2">
+          <LabelSel label="Supplier" value={filters.supplier} onChange={v=>setFilters(f=>({...f, supplier:v}))}>
+            <option value="">Any</option>
+            {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </LabelSel>
+          <LabelSel label="Material" value={filters.material} onChange={v=>setFilters(f=>({...f, material:v as any}))}>
+            <option value="">Any</option><option value="WOOD">Wood</option><option value="METAL">Metal</option><option value="GREEN">Green</option>
+          </LabelSel>
+          <LabelSel label="Jewish" value={filters.jewish} onChange={v=>setFilters(f=>({...f, jewish:v as any}))}>
+            <option value="">Any</option><option value="yes">Yes</option><option value="no">No</option>
+          </LabelSel>
+          <LabelSel label="Green" value={filters.green} onChange={v=>setFilters(f=>({...f, green:v as any}))}>
+            <option value="">Any</option><option value="yes">Green Only</option><option value="no">Exclude Green</option>
+          </LabelSel>
+          <div className="space-y-1 md:col-span-2">
+            <div className="label-xs">Search</div>
+            <Input className="input-sm" value={filters.q} onChange={e=>setFilters(f=>({...f, q: e.target.value}))} placeholder="Name..." />
           </div>
+        </div>
+        <div className="grid md:grid-cols-6 gap-2 mt-3">
+          <Dim label="Ext W"  min={filters.minEW} max={filters.maxEW} onMin={v=>setFilters(f=>({...f, minEW:v}))} onMax={v=>setFilters(f=>({...f, maxEW:v}))}/>
+          <Dim label="Ext L"  min={filters.minEL} max={filters.maxEL} onMin={v=>setFilters(f=>({...f, minEL:v}))} onMax={v=>setFilters(f=>({...f, maxEL:v}))}/>
+          <Dim label="Ext H"  min={filters.minEH} max={filters.maxEH} onMin={v=>setFilters(f=>({...f, minEH:v}))} onMax={v=>setFilters(f=>({...f, maxEH:v}))}/>
+          <Dim label="Int W"  min={filters.minIW} max={filters.maxIW} onMin={v=>setFilters(f=>({...f, minIW:v}))} onMax={v=>setFilters(f=>({...f, maxIW:v}))}/>
+          <Dim label="Int L"  min={filters.minIL} max={filters.maxIL} onMin={v=>setFilters(f=>({...f, minIL:v}))} onMax={v=>setFilters(f=>({...f, maxIL:v}))}/>
+          <Dim label="Int H"  min={filters.minIH} max={filters.maxIH} onMin={v=>setFilters(f=>({...f, minIH:v}))} onMax={v=>setFilters(f=>({...f, maxIH:v}))}/>
+        </div>
+      </HoloPanel>
 
-          {/* dimensions */}
-          <div className="grid xl:grid-cols-2 gap-4">
-            <DimGroup title="Exterior (inches)" w={extW} l={extL} h={extH} onW={setExtW} onL={setExtL} onH={setExtH} />
-            <DimGroup title="Interior (inches)" w={intW} l={intL} h={intH} onW={setIntW} onL={setIntL} onH={setIntH} />
-          </div>
-        </HoloPanel>
-      )}
-
-      {/* grid */}
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-        {filtered.map((c: any) => {
-          const sup = suppliers.find((s) => Number(s.id) === Number(c.supplier_id)) || null;
-
-          const onHand = toNum(c.on_hand) ?? 0;
-          const onOrder = toNum(c.on_order) ?? 0;
-          const target = toNum(c.target_qty);
-          const { status, deficit } = computeStatus(onHand, onOrder, target);
-          const theme = statusTheme(status);
-
-          const ew = pickNumber(c, ["ext_width", "ext_w", "exterior_width", "width_exterior", "extWidth"]);
-          const el = pickNumber(c, ["ext_length", "ext_l", "exterior_length", "length_exterior", "extLength"]);
-          const eh = pickNumber(c, ["ext_height", "ext_h", "exterior_height", "height_exterior", "extHeight"]);
-          const iw = pickNumber(c, ["int_width", "int_w", "interior_width", "width_interior", "intWidth"]);
-          const il = pickNumber(c, ["int_length", "int_l", "interior_length", "length_interior", "intLength"]);
-          const ih = pickNumber(c, ["int_height", "int_h", "interior_height", "height_interior", "intHeight"]);
-
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+        {filtered.map(row=>{
+          const none = (row.on_hand ?? 0) === 0;
+          const rail = none ? "rose" : "purple";
+          const full = isFull(row);
+          const stat = full ? "FULL" : none ? "NONE ON HAND" : `SHORT by ${shortBy(row)}`;
+          const statStyle = none ? "text-rose-300" : full ? "text-emerald-300" : "text-amber-300";
           return (
-            <HoloPanel key={c.id} rail railColor={theme.rail} className="flex flex-col gap-4 p-4">
-              <div className="flex items-start gap-2">
-                <div className="text-white/90 text-sm truncate">{c.name}</div>
-                <div className={`ml-auto text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border ${theme.badge}`}>
-                  {status === "NONE" ? "NONE ON HAND" : status === "SHORT" ? `SHORT by ${deficit}` : "FULL"}
-                </div>
+            <HoloPanel key={row.id} railColor={rail} className="min-h-[244px] pb-10 flex flex-col">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-white/90 truncate">{row.name}</div>
+                <span className={`inline-flex items-center px-2 h-6 rounded-md border border-white/10 bg-white/5 text-xs ${statStyle}`}>{stat}</span>
+              </div>
+              <div className="text-xs text-white/60 mt-1">Supplier: {suppliers.find(s=>s.id===row.supplier_id)?.name ?? "—"}</div>
+              <div className="text-xs text-white/60 mt-1 flex gap-3 flex-wrap">
+                <span>Material: {row.material}</span>
+                <span>{row.jewish ? "Jewish" : "Non‑Jewish"}</span>
+                <span>{row.green ? "Green" : "—"}</span>
+              </div>
+              <div className="text-xs text-white/60 mt-1">Ext: {row.ext_width_in ?? "—"}W × {row.ext_length_in ?? "—"}L × {row.ext_height_in ?? "—"}H</div>
+              <div className="text-xs text-white/60">Int: {row.int_width_in ?? "—"}W × {row.int_length_in ?? "—"}L × {row.int_height_in ?? "—"}H</div>
+              <div className="mt-2 text-xs space-y-0.5">
+                <div>Target: <b>{row.target_qty}</b></div>
+                <div>On hand: <b>{row.on_hand}</b> • On order: <b>{row.on_order_live}</b> • Backorders: <b className="text-rose-300">{row.backordered_live}</b></div>
               </div>
 
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-white/70">
-                <div className="truncate">
-                  <span className="text-white/50">Supplier:</span>{" "}
-                  <span className="text-white/80">{sup?.name ?? "—"}</span>
-                </div>
-                <div className="truncate">
-                  <span className="text-white/50">Material:</span>{" "}
-                  <span className="text-white/80">
-                    {c.material === "WOOD" ? "Wood" : c.material === "METAL" ? "Metal" : c.material === "GREEN" ? "Green Burial" : "—"}
-                  </span>
-                </div>
-                <div className="truncate">
-                  <span className="text-white/50">Jewish:</span>{" "}
-                  <span className="text-white/80">{c.jewish ? "Yes" : "No"}</span>
-                </div>
-                <div className="truncate">
-                  <span className="text-white/50">Green:</span>{" "}
-                  <span className="text-white/80">{c.green ? "Yes" : "No"}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 text-center text-[11px] text-white/70 gap-2">
-                <StatTile label="On Hand" value={onHand} ring={onHand === 0 ? "ring-rose-400/60" : ""} />
-                <StatTile label="On Order" value={onOrder} />
-                <StatTile
-                  label="Target"
-                  value={target ?? "—"}
-                  ring={target != null && onHand + onOrder < target ? "ring-amber-400/60" : ""}
-                />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-3">
-                <DimSlab title="Exterior (inches)" w={ew} l={el} h={eh} />
-                <DimSlab title="Interior (inches)" w={iw} l={il} h={ih} />
+              <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10 relative z-10 pointer-events-auto">
+                <IconBtn title="Edit" onClick={()=>setEditRow(row)}><IconEdit className="text-white/80"/></IconBtn>
+                <IconBtn title="Adjust on‑hand" onClick={()=>setAdjustRow(row)}><IconAdjust className="text-emerald-300"/></IconBtn>
+                <IconBtn title="Delete" onClick={async ()=>{
+                  if(!confirm("Delete this casket?")) return;
+                  const res = await fetch(`/api/caskets/${row.id}`, { method:"DELETE" });
+                  if(!res.ok){ alert(await res.text()); return; }
+                  load();
+                }}><IconTrash className="text-rose-400"/></IconBtn>
               </div>
             </HoloPanel>
           );
         })}
-        {filtered.length === 0 && <div className="col-span-full text-white/50 text-sm">No caskets.</div>}
       </div>
+
+      {/* Edit ALL FIELDS (except on-hand/on-order) */}
+      {editRow !== null && (
+        <Modal onClose={()=>setEditRow(null)} title={editRow.id ? "Edit Casket" : "Add Casket"}>
+          <form className="space-y-3" onSubmit={async (e)=>{
+            e.preventDefault();
+            const id = editRow!.id;
+            const method = id ? "PATCH" : "POST";
+            const url = id ? `/api/caskets/${id}` : "/api/caskets";
+            const body:any = {
+              name: fName.trim(),
+              supplier_id: fSupplier === "" ? null : Number(fSupplier),
+              material: fMaterial,
+              jewish: fJewish,
+              green: fGreen,
+              ext_width_in: fExtW ? Number(fExtW) : null,
+              ext_length_in: fExtL ? Number(fExtL) : null,
+              ext_height_in: fExtH ? Number(fExtH) : null,
+              int_width_in: fIntW ? Number(fIntW) : null,
+              int_length_in: fIntL ? Number(fIntL) : null,
+              int_height_in: fIntH ? Number(fIntH) : null,
+              target_qty: fTarget ? Number(fTarget) : 0,
+            };
+            const res = await fetch(url, { method, headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+            if(!res.ok){ alert(await res.text()); return; }
+            setEditRow(null); await load();
+          }}>
+            <div className="grid md:grid-cols-2 gap-3">
+              <Text label="Name" value={fName} onChange={setFName}/>
+              <Select label="Supplier" value={fSupplier} onChange={v=>setFSupplier(v)}>
+                <option value="">—</option>
+                {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+              <Select label="Material" value={fMaterial} onChange={v=>setFMaterial(v as any)}>
+                <option value="WOOD">Wood</option><option value="METAL">Metal</option><option value="GREEN">Green</option>
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <Check label="Jewish" checked={fJewish} onChange={setFJewish}/>
+                <Check label="Green" checked={fGreen} onChange={setFGreen}/>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3">
+              <Num label="Ext Width (in)" value={fExtW} onChange={setFExtW}/>
+              <Num label="Ext Length (in)" value={fExtL} onChange={setFExtL}/>
+              <Num label="Ext Height (in)" value={fExtH} onChange={setFExtH}/>
+              <Num label="Int Width (in)" value={fIntW} onChange={setFIntW}/>
+              <Num label="Int Length (in)" value={fIntL} onChange={setFIntL}/>
+              <Num label="Int Height (in)" value={fIntH} onChange={setFIntH}/>
+              <Num label="Target Qty" value={fTarget} onChange={setFTarget}/>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={()=>setEditRow(null)}>Cancel</Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Adjust on-hand modal */}
+      {adjustRow !== null && (
+        <Modal onClose={()=>setAdjustRow(null)} title="Adjust On‑Hand">
+          <form className="space-y-3" onSubmit={async (e)=>{
+            e.preventDefault();
+            const id = adjustRow!.id;
+            const res = await fetch(`/api/caskets/${id}`, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ on_hand: formOnHand }) });
+            if(!res.ok){ alert(await res.text()); return; }
+            setAdjustRow(null); await load();
+          }}>
+            <Num label="On‑hand" value={String(formOnHand)} onChange={(v)=>setFormOnHand(Number(v||"0"))}/>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={()=>setAdjustRow(null)}>Cancel</Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
 
-/* helpers */
-type DimGroupProps = {
-  title: string;
-  w: Range;
-  l: Range;
-  h: Range;
-  onW: (r: Range) => void;
-  onL: (r: Range) => void;
-  onH: (r: Range) => void;
-};
-
-function DimGroup({ title, w, l, h, onW, onL, onH }: DimGroupProps) {
+function LabelSel({ label, value, onChange, children }:{
+  label:string; value:any; onChange:(v:any)=>void; children:React.ReactNode;
+}){
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-      <div className="text-[11px] text-white/60 mb-2">{title}</div>
-      <div className="grid sm:grid-cols-3 gap-3">
-        <DimRange label="Width" value={w} onChange={onW} />
-        <DimRange label="Length" value={l} onChange={onL} />
-        <DimRange label="Height" value={h} onChange={onH} />
+    <div className="space-y-1">
+      <div className="label-xs">{label}</div>
+      <select className="select-sm w-full text-white bg-white/5 border border-white/10 rounded-md" value={value as any} onChange={e=>onChange(e.target.value ? isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) : "")}>
+        {children}
+      </select>
+    </div>
+  );
+}
+function Dim({label,min,max,onMin,onMax}:{label:string;min?:string;max?:string;onMin:(v:string)=>void;onMax:(v:string)=>void;}){
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      <div className="label-xs col-span-3">{label}</div>
+      <Input className="input-sm" placeholder="Min" value={min ?? ""} onChange={e=>onMin(e.target.value)}/>
+      <div className="text-center text-xs text-white/40 self-center">–</div>
+      <Input className="input-sm" placeholder="Max" value={max ?? ""} onChange={e=>onMax(e.target.value)}/>
+    </div>
+  );
+}
+function IconBtn({title, onClick, children}:{title:string; onClick:()=>void; children:React.ReactNode;}){
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+    >
+      {children}
+    </button>
+  );
+}
+function Modal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string; }){
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative w-full max-w-2xl mx-4 rounded-2xl border border-white/10 bg-neutral-900/90 backdrop-blur-xl p-4 shadow-[0_0_40px_rgba(0,0,0,0.45)] max-h-[90vh] overflow-auto">
+        <h2 className="text-white/90 text-sm mb-3">{title}</h2>
+        {children}
       </div>
     </div>
   );
 }
-
-function DimRange({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: Range;
-  onChange: (next: Range) => void;
-}) {
-  const normalize = (v: string) => (v === "" ? "" : Number(v));
+function Text({label,value,onChange}:{label:string; value:string; onChange:(v:string)=>void;}){
+  return (<div><div className="label-xs">{label}</div><Input className="input-sm" value={value} onChange={e=>onChange(e.target.value)}/></div>);
+}
+function Num({label,value,onChange}:{label:string; value:string; onChange:(v:string)=>void;}){
+  return (<div><div className="label-xs">{label}</div><Input className="input-sm" type="number" value={value} onChange={e=>onChange(e.target.value)}/></div>);
+}
+function Check({label,checked,onChange}:{label:string; checked:boolean; onChange:(v:boolean)=>void;}){
+  return (<label className="inline-flex items-center gap-2 text-white/80 text-sm"><input type="checkbox" className="accent-emerald-400" checked={checked} onChange={e=>onChange(e.target.checked)}/> {label}</label>);
+}
+function Select({label,value,onChange,children}:{label:string; value:any; onChange:(v:any)=>void; children:React.ReactNode;}){
   return (
     <div>
-      <div className="text-[11px] text-white/50 mb-1">{label}</div>
-      <div className="flex gap-2">
-        <Input
-          placeholder="min"
-          value={value.min ?? ""}
-          onChange={(e) => onChange({ ...value, min: normalize(e.target.value) })}
-          className="h-9"
-          inputMode="numeric"
-        />
-        <Input
-          placeholder="max"
-          value={value.max ?? ""}
-          onChange={(e) => onChange({ ...value, max: normalize(e.target.value) })}
-          className="h-9"
-          inputMode="numeric"
-        />
-      </div>
-    </div>
-  );
-}
-
-function StatTile({ label, value, ring = "" }: { label: string; value: number | string; ring?: string }) {
-  return (
-    <div className={`rounded-md border border-white/10 py-2 ${ring ? `ring-1 ${ring}` : ""}`}>
-      <div className="text-white/50">{label}</div>
-      <div className="text-white/90 text-sm">{value}</div>
-    </div>
-  );
-}
-
-function DimSlab({ title, w, l, h }: { title: string; w: number | null; l: number | null; h: number | null }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-      <div className="text-white/60 text-[11px] mb-1">{title}</div>
-      <div className="text-white/80 text-sm leading-6">
-        <span className="text-white/60">W</span> {w ?? "—"}{" "}
-        <span className="text-white/60">× L</span> {l ?? "—"}{" "}
-        <span className="text-white/60">× H</span> {h ?? "—"}
-      </div>
+      <div className="label-xs">{label}</div>
+      <select className="select-sm w-full text-white bg-white/5 border border-white/10 rounded-md" value={value as any} onChange={e=>onChange(e.target.value ? isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) : "")}>
+        {children}
+      </select>
     </div>
   );
 }
