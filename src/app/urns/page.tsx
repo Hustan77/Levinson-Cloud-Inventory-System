@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Urns — Inventory-only (no order info)
- * - Clean layout, dimensions visible
- * - Supplier, Category, Green checkbox filters + Status
- * - Status badge: FULL / SHORT by N / NONE ON HAND
+ * Urns inventory page
+ * - SINGLE Green checkbox (show only Green when checked)
+ * - Dimensions render and layout matches caskets (crisp + clean)
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -15,11 +14,12 @@ import { Input } from "../components/ui/input";
 type Status = "FULL" | "SHORT" | "NONE";
 type Range = { min?: number | ""; max?: number | "" };
 
-function asNum(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
+const toNum = (v: any): number | null => {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
+};
+
 function computeStatus(onHand: number, onOrder: number, target: number | null): { status: Status; deficit: number } {
   if (onHand <= 0) return { status: "NONE", deficit: Math.max((target ?? 0) - (onHand + onOrder), 0) };
   if (target != null && onHand + onOrder < target) {
@@ -27,7 +27,8 @@ function computeStatus(onHand: number, onOrder: number, target: number | null): 
   }
   return { status: "FULL", deficit: 0 };
 }
-function statusColors(s: Status) {
+
+function statusTheme(s: Status) {
   switch (s) {
     case "NONE":
       return { rail: "rose", badge: "border-rose-400/60 text-rose-300 bg-rose-400/10" };
@@ -42,12 +43,11 @@ export default function UrnsPage() {
   const [rows, setRows] = useState<Urn[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [q, setQ] = useState("");
-  const [showFilters, setShowFilters] = useState(true);
 
+  const [showFilters, setShowFilters] = useState(true);
   const [supplierId, setSupplierId] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | Status>("ALL");
   const [category, setCategory] = useState<"" | "Full Size" | "Keepsake" | "Jewelry" | "Special Use">("");
-  const [isGreen, setIsGreen] = useState(false);
   const [onlyGreen, setOnlyGreen] = useState(false);
 
   const [rw, setRw] = useState<Range>({});
@@ -65,10 +65,10 @@ export default function UrnsPage() {
     })();
   }, []);
 
-  const inRange = (value: number | null, r: Range) => {
-    if (value === null) return true;
-    if (r.min !== undefined && r.min !== "" && value < Number(r.min)) return false;
-    if (r.max !== undefined && r.max !== "" && value > Number(r.max)) return false;
+  const inRange = (v: number | null, r: Range) => {
+    if (v === null) return true;
+    if (r.min !== undefined && r.min !== "" && v < Number(r.min)) return false;
+    if (r.max !== undefined && r.max !== "" && v > Number(r.max)) return false;
     return true;
   };
 
@@ -78,29 +78,26 @@ export default function UrnsPage() {
       const sname = suppliers.find((s) => s.id === u.supplier_id)?.name ?? "";
       if (term && !(`${u.name} ${sname}`.toLowerCase().includes(term))) return false;
 
-      const onHand = asNum(u.on_hand) ?? 0;
-      const onOrder = asNum(u.on_order) ?? 0;
-      const target = asNum(u.target_qty);
+      if (supplierId !== "" && u.supplier_id !== supplierId) return false;
+      if (category && u.category !== category) return false;
+      if (onlyGreen && !u.green) return false;
+
+      const onHand = toNum(u.on_hand) ?? 0;
+      const onOrder = toNum(u.on_order) ?? 0;
+      const target = toNum(u.target_qty);
       const { status } = computeStatus(onHand, onOrder, target);
       if (statusFilter !== "ALL" && status !== statusFilter) return false;
 
-      if (supplierId !== "" && u.supplier_id !== supplierId) return false;
-
-      if (category && u.category !== category) return false;
-      if (isGreen && onlyGreen && !u.green) return false;
-
-      const w = asNum(u.width);
-      const l = asNum(u.length);
-      const h = asNum(u.height);
+      const w = toNum(u.width);
+      const l = toNum(u.length);
+      const h = toNum(u.height);
       if (!inRange(w, rw)) return false;
       if (!inRange(l, rl)) return false;
       if (!inRange(h, rh)) return false;
 
       return true;
     });
-  }, [rows, suppliers, q, supplierId, statusFilter, category, isGreen, onlyGreen, rw, rl, rh]);
-
-  const num = (v: string) => (v === "" ? "" : Number(v));
+  }, [rows, suppliers, q, supplierId, statusFilter, category, onlyGreen, rw, rl, rh]);
 
   return (
     <div className="p-6 space-y-4">
@@ -178,18 +175,8 @@ export default function UrnsPage() {
                 <input
                   type="checkbox"
                   className="accent-emerald-400"
-                  checked={isGreen}
-                  onChange={(e) => setIsGreen(e.target.checked)}
-                />
-                Green filter
-              </label>
-              <label className="flex items-center gap-2 text-white/80">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
                   checked={onlyGreen}
                   onChange={(e) => setOnlyGreen(e.target.checked)}
-                  disabled={!isGreen}
                 />
                 Green only
               </label>
@@ -209,23 +196,23 @@ export default function UrnsPage() {
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
         {filtered.map((u: any) => {
-          const s = suppliers.find((x) => x.id === u.supplier_id) || null;
+          const sup = suppliers.find((s) => s.id === u.supplier_id) || null;
 
-          const onHand = asNum(u.on_hand) ?? 0;
-          const onOrder = asNum(u.on_order) ?? 0;
-          const target = asNum(u.target_qty);
+          const onHand = toNum(u.on_hand) ?? 0;
+          const onOrder = toNum(u.on_order) ?? 0;
+          const target = toNum(u.target_qty);
           const { status, deficit } = computeStatus(onHand, onOrder, target);
-          const { rail, badge } = statusColors(status);
+          const theme = statusTheme(status);
 
-          const w = asNum(u.width);
-          const l = asNum(u.length);
-          const h = asNum(u.height);
+          const w = toNum(u.width);
+          const l = toNum(u.length);
+          const h = toNum(u.height);
 
           return (
-            <HoloPanel key={u.id} rail railColor={rail} className="flex flex-col gap-4 p-4">
+            <HoloPanel key={u.id} rail railColor={theme.rail} className="flex flex-col gap-4 p-4">
               <div className="flex items-start gap-2">
                 <div className="text-white/90 text-sm truncate">{u.name}</div>
-                <div className={`ml-auto text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border ${badge}`}>
+                <div className={`ml-auto text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border ${theme.badge}`}>
                   {status === "NONE" ? "NONE ON HAND" : status === "SHORT" ? `SHORT by ${deficit}` : "FULL"}
                 </div>
               </div>
@@ -233,18 +220,22 @@ export default function UrnsPage() {
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-white/70">
                 <div className="truncate">
                   <span className="text-white/50">Supplier:</span>{" "}
-                  <span className="text-white/80">{s?.name ?? "—"}</span>
+                  <span className="text-white/80">{sup?.name ?? "—"}</span>
                 </div>
                 <div className="truncate">
                   <span className="text-white/50">Category:</span>{" "}
                   <span className="text-white/80">{u.category ?? "—"}</span>
                 </div>
+                <div className="truncate">
+                  <span className="text-white/50">Green:</span>{" "}
+                  <span className="text-white/80">{u.green ? "Yes" : "No"}</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-3 text-center text-[11px] text-white/70 gap-2">
-                <Tile label="On Hand" value={onHand} ring={onHand === 0 ? "ring-rose-400/60" : ""} />
-                <Tile label="On Order" value={onOrder} />
-                <Tile
+                <StatTile label="On Hand" value={onHand} ring={onHand === 0 ? "ring-rose-400/60" : ""} />
+                <StatTile label="On Order" value={onOrder} />
+                <StatTile
                   label="Target"
                   value={target ?? "—"}
                   ring={target != null && onHand + onOrder < target ? "ring-amber-400/60" : ""}
@@ -268,6 +259,7 @@ export default function UrnsPage() {
   );
 }
 
+/* helpers */
 function DimRange({
   label,
   value,
@@ -277,7 +269,7 @@ function DimRange({
   value: Range;
   onChange: (next: Range) => void;
 }) {
-  const asNum = (v: string) => (v === "" ? "" : Number(v));
+  const normalize = (v: string) => (v === "" ? "" : Number(v));
   return (
     <div>
       <div className="text-[11px] text-white/50 mb-1">{label}</div>
@@ -285,14 +277,14 @@ function DimRange({
         <Input
           placeholder="min"
           value={value.min ?? ""}
-          onChange={(e) => onChange({ ...value, min: asNum(e.target.value) })}
+          onChange={(e) => onChange({ ...value, min: normalize(e.target.value) })}
           className="h-9"
           inputMode="numeric"
         />
         <Input
           placeholder="max"
           value={value.max ?? ""}
-          onChange={(e) => onChange({ ...value, max: asNum(e.target.value) })}
+          onChange={(e) => onChange({ ...value, max: normalize(e.target.value) })}
           className="h-9"
           inputMode="numeric"
         />
@@ -301,7 +293,7 @@ function DimRange({
   );
 }
 
-function Tile({ label, value, ring = "" }: { label: string; value: number | string; ring?: string }) {
+function StatTile({ label, value, ring = "" }: { label: string; value: number | string; ring?: string }) {
   return (
     <div className={`rounded-md border border-white/10 py-2 ${ring ? `ring-1 ${ring}` : ""}`}>
       <div className="text-white/50">{label}</div>
