@@ -1,4 +1,4 @@
-// LANDMARK: Orders [id] PATCH route — inline Zod schema (no external UpdateOrderSchema import)
+// LANDMARK: Orders [id] PATCH route — context param untyped to satisfy Next 15 validator
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { z } from "zod";
@@ -30,14 +30,16 @@ const UpdateOrderSchema = z.object({
   supplier_id: z.number().int().optional(),
 });
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const idNum = Number(params.id);
+export async function PATCH(req: Request, context: any) {
+  // NOTE: Leaving context untyped avoids Next 15 “invalid second argument type” error.
+  const idRaw = context?.params?.id;
+  const idNum = Number(idRaw);
   if (!idNum) return new NextResponse("Invalid id", { status: 400 });
 
   let body: unknown = null;
   try {
     body = await req.json();
-  } catch (e: unknown) {
+  } catch {
     return new NextResponse("Invalid JSON", { status: 400 });
   }
 
@@ -49,9 +51,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const update = parsed.data;
 
   // Business rule guardrails:
-  // - If backordered is true, expected_date may be null only when tbd_expected=true.
+  // If backordered is true, expected_date may be null only when tbd_expected=true.
   if (update.backordered === true) {
-    if (update.tbd_expected !== true && update.expected_date == null) {
+    if (update.tbd_expected !== true && (update.expected_date == null || update.expected_date === "")) {
       return new NextResponse("Provide expected_date or set tbd_expected=true for backorders", { status: 400 });
     }
   }
