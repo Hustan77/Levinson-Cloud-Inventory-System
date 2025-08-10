@@ -2,8 +2,8 @@
 
 /**
  * Urns inventory page
- * - SINGLE Green checkbox (show only Green when checked)
- * - Dimensions render and layout matches caskets (crisp + clean)
+ * - SINGLE Green toggle
+ * - Dimensions fallback for width/length/height (w/l/h also supported)
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -18,6 +18,16 @@ const toNum = (v: any): number | null => {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+};
+
+const pickNumber = (obj: any, keys: string[]): number | null => {
+  for (const k of keys) {
+    if (k in obj) {
+      const n = toNum(obj[k]);
+      if (n !== null) return n;
+    }
+  }
+  return null;
 };
 
 function computeStatus(onHand: number, onOrder: number, target: number | null): { status: Status; deficit: number } {
@@ -75,10 +85,10 @@ export default function UrnsPage() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     return rows.filter((u: any) => {
-      const sname = suppliers.find((s) => s.id === u.supplier_id)?.name ?? "";
+      const sname = suppliers.find((s) => Number(s.id) === Number(u.supplier_id))?.name ?? "";
       if (term && !(`${u.name} ${sname}`.toLowerCase().includes(term))) return false;
 
-      if (supplierId !== "" && u.supplier_id !== supplierId) return false;
+      if (supplierId !== "" && Number(u.supplier_id) !== Number(supplierId)) return false;
       if (category && u.category !== category) return false;
       if (onlyGreen && !u.green) return false;
 
@@ -88,9 +98,10 @@ export default function UrnsPage() {
       const { status } = computeStatus(onHand, onOrder, target);
       if (statusFilter !== "ALL" && status !== statusFilter) return false;
 
-      const w = toNum(u.width);
-      const l = toNum(u.length);
-      const h = toNum(u.height);
+      const w = pickNumber(u, ["width", "w"]);
+      const l = pickNumber(u, ["length", "l"]);
+      const h = pickNumber(u, ["height", "h"]);
+
       if (!inRange(w, rw)) return false;
       if (!inRange(l, rl)) return false;
       if (!inRange(h, rh)) return false;
@@ -196,7 +207,7 @@ export default function UrnsPage() {
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
         {filtered.map((u: any) => {
-          const sup = suppliers.find((s) => s.id === u.supplier_id) || null;
+          const sup = suppliers.find((s) => Number(s.id) === Number(u.supplier_id)) || null;
 
           const onHand = toNum(u.on_hand) ?? 0;
           const onOrder = toNum(u.on_order) ?? 0;
@@ -204,9 +215,9 @@ export default function UrnsPage() {
           const { status, deficit } = computeStatus(onHand, onOrder, target);
           const theme = statusTheme(status);
 
-          const w = toNum(u.width);
-          const l = toNum(u.length);
-          const h = toNum(u.height);
+          const w = pickNumber(u, ["width", "w"]);
+          const l = pickNumber(u, ["length", "l"]);
+          const h = pickNumber(u, ["height", "h"]);
 
           return (
             <HoloPanel key={u.id} rail railColor={theme.rail} className="flex flex-col gap-4 p-4">

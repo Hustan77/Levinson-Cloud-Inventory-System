@@ -2,8 +2,12 @@
 
 /**
  * OrderCard
- * - Supplier shows via order.supplier_name fallback -> suppliers list
- * - Compact footer actions (icons), no overlap with text
+ * - Supplier resolves via:
+ *   1) order.supplier_name (from v_orders_enriched or join)
+ *   2) suppliers.find by numeric equality on id vs supplier_id
+ *   3) order.supplier (string from older views)
+ * - Icons in a dedicated footer row (no overlap with text)
+ * - Subtle "due today / overdue" ring on the info slab
  */
 
 import React from "react";
@@ -30,21 +34,21 @@ export default function OrderCard({
   const rail =
     status === "ARRIVED" ? "emerald" : status === "SPECIAL" ? "purple" : status === "BACKORDERED" ? "rose" : "amber";
 
-  // LANDMARK: robust supplier + item name resolution
+  // LANDMARK: robust supplier + item name resolution (coerce id types)
   const supplierName =
     (order as any).supplier_name ??
-    suppliers.find((s) => s.id === order.supplier_id)?.name ??
+    suppliers.find((s) => Number(s.id) === Number(order.supplier_id))?.name ??
     (order as any).supplier ??
     "—";
 
   const itemName =
     order.item_name ||
     (order.item_type === "casket"
-      ? caskets.find((c) => c.id === order.item_id)?.name
-      : urns.find((u) => u.id === order.item_id)?.name) ||
+      ? caskets.find((c) => Number(c.id) === Number(order.item_id))?.name
+      : urns.find((u) => Number(u.id) === Number(order.item_id))?.name) ||
     "(unnamed item)";
 
-  // simple “due today/overdue” ring
+  // Due today / overdue highlight
   let dueRing = "";
   if (order.expected_date && status !== "ARRIVED" && !order.tbd_expected) {
     const today = new Date();

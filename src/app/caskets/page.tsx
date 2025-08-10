@@ -2,10 +2,9 @@
 
 /**
  * Caskets inventory page
- * - SINGLE Jewish checkbox (show only Jewish when checked)
- * - SINGLE Green checkbox (show only Green when checked)
- * - Dimensions render regardless of ext_width/ext_w naming
- * - Crisp card layout, clean spacing
+ * - SINGLE Jewish / Green toggles (no extra filter chips)
+ * - Crisp layout
+ * - Dimensions: tolerant to many DB column names (ext_width/ext_w/exterior_width, etc.)
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -20,6 +19,16 @@ const toNum = (v: any): number | null => {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+};
+
+const pickNumber = (obj: any, keys: string[]): number | null => {
+  for (const k of keys) {
+    if (k in obj) {
+      const n = toNum(obj[k]);
+      if (n !== null) return n;
+    }
+  }
+  return null;
 };
 
 function computeStatus(onHand: number, onOrder: number, target: number | null): { status: Status; deficit: number } {
@@ -46,13 +55,11 @@ export default function CasketsPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [q, setQ] = useState("");
 
-  // filters
   const [showFilters, setShowFilters] = useState(true);
   const [supplierId, setSupplierId] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | Status>("ALL");
   const [material, setMaterial] = useState<"" | "WOOD" | "METAL" | "GREEN">("");
 
-  // **single** toggles
   const [onlyJewish, setOnlyJewish] = useState(false);
   const [onlyGreen, setOnlyGreen] = useState(false);
 
@@ -84,12 +91,11 @@ export default function CasketsPage() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     return rows.filter((c: any) => {
-      const sname = suppliers.find((s) => s.id === c.supplier_id)?.name ?? "";
+      const sname = suppliers.find((s) => Number(s.id) === Number(c.supplier_id))?.name ?? "";
       if (term && !(`${c.name} ${sname}`.toLowerCase().includes(term))) return false;
 
-      if (supplierId !== "" && c.supplier_id !== supplierId) return false;
+      if (supplierId !== "" && Number(c.supplier_id) !== Number(supplierId)) return false;
       if (material && c.material !== material) return false;
-
       if (onlyJewish && !c.jewish) return false;
       if (onlyGreen && !c.green) return false;
 
@@ -99,12 +105,12 @@ export default function CasketsPage() {
       const { status } = computeStatus(onHand, onOrder, target);
       if (statusFilter !== "ALL" && status !== statusFilter) return false;
 
-      const EW = toNum(c.ext_width ?? c.ext_w);
-      const EL = toNum(c.ext_length ?? c.ext_l);
-      const EH = toNum(c.ext_height ?? c.ext_h);
-      const IW = toNum(c.int_width ?? c.int_w);
-      const IL = toNum(c.int_length ?? c.int_l);
-      const IH = toNum(c.int_height ?? c.int_h);
+      const EW = pickNumber(c, ["ext_width", "ext_w", "exterior_width", "width_exterior", "extWidth"]);
+      const EL = pickNumber(c, ["ext_length", "ext_l", "exterior_length", "length_exterior", "extLength"]);
+      const EH = pickNumber(c, ["ext_height", "ext_h", "exterior_height", "height_exterior", "extHeight"]);
+      const IW = pickNumber(c, ["int_width", "int_w", "interior_width", "width_interior", "intWidth"]);
+      const IL = pickNumber(c, ["int_length", "int_l", "interior_length", "length_interior", "intLength"]);
+      const IH = pickNumber(c, ["int_height", "int_h", "interior_height", "height_interior", "intHeight"]);
 
       if (!inRange(EW, extW)) return false;
       if (!inRange(EL, extL)) return false;
@@ -134,7 +140,7 @@ export default function CasketsPage() {
 
   return (
     <div className="p-6 space-y-4">
-      {/* LANDMARK: header */}
+      {/* header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-white/90 text-lg">Caskets</h1>
         <div className="flex items-center gap-3 w-full md:w-auto">
@@ -156,7 +162,7 @@ export default function CasketsPage() {
         </div>
       </div>
 
-      {/* LANDMARK: filters */}
+      {/* filters */}
       {showFilters && (
         <HoloPanel rail railColor="cyan" className="space-y-4 p-4">
           <div className="grid lg:grid-cols-4 gap-4">
@@ -228,32 +234,16 @@ export default function CasketsPage() {
 
           {/* dimensions */}
           <div className="grid xl:grid-cols-2 gap-4">
-            <DimGroup
-              title="Exterior (inches)"
-              w={extW}
-              l={extL}
-              h={extH}
-              onW={setExtW}
-              onL={setExtL}
-              onH={setExtH}
-            />
-            <DimGroup
-              title="Interior (inches)"
-              w={intW}
-              l={intL}
-              h={intH}
-              onW={setIntW}
-              onL={setIntL}
-              onH={setIntH}
-            />
+            <DimGroup title="Exterior (inches)" w={extW} l={extL} h={extH} onW={setExtW} onL={setExtL} onH={setExtH} />
+            <DimGroup title="Interior (inches)" w={intW} l={intL} h={intH} onW={setIntW} onL={setIntL} onH={setIntH} />
           </div>
         </HoloPanel>
       )}
 
-      {/* LANDMARK: responsive grid, tight & clean */}
+      {/* grid */}
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
         {filtered.map((c: any) => {
-          const sup = suppliers.find((s) => s.id === c.supplier_id) || null;
+          const sup = suppliers.find((s) => Number(s.id) === Number(c.supplier_id)) || null;
 
           const onHand = toNum(c.on_hand) ?? 0;
           const onOrder = toNum(c.on_order) ?? 0;
@@ -261,12 +251,12 @@ export default function CasketsPage() {
           const { status, deficit } = computeStatus(onHand, onOrder, target);
           const theme = statusTheme(status);
 
-          const ew = toNum(c.ext_width ?? c.ext_w);
-          const el = toNum(c.ext_length ?? c.ext_l);
-          const eh = toNum(c.ext_height ?? c.ext_h);
-          const iw = toNum(c.int_width ?? c.int_w);
-          const il = toNum(c.int_length ?? c.int_l);
-          const ih = toNum(c.int_height ?? c.int_h);
+          const ew = pickNumber(c, ["ext_width", "ext_w", "exterior_width", "width_exterior", "extWidth"]);
+          const el = pickNumber(c, ["ext_length", "ext_l", "exterior_length", "length_exterior", "extLength"]);
+          const eh = pickNumber(c, ["ext_height", "ext_h", "exterior_height", "height_exterior", "extHeight"]);
+          const iw = pickNumber(c, ["int_width", "int_w", "interior_width", "width_interior", "intWidth"]);
+          const il = pickNumber(c, ["int_length", "int_l", "interior_length", "length_interior", "intLength"]);
+          const ih = pickNumber(c, ["int_height", "int_h", "interior_height", "height_interior", "intHeight"]);
 
           return (
             <HoloPanel key={c.id} rail railColor={theme.rail} className="flex flex-col gap-4 p-4">
@@ -321,16 +311,8 @@ export default function CasketsPage() {
   );
 }
 
-/* LANDMARK: helpers */
-function DimGroup({
-  title,
-  w,
-  l,
-  h,
-  onW,
-  onL,
-  onH,
-}: {
+/* helpers */
+type DimGroupProps = {
   title: string;
   w: Range;
   l: Range;
@@ -338,7 +320,9 @@ function DimGroup({
   onW: (r: Range) => void;
   onL: (r: Range) => void;
   onH: (r: Range) => void;
-}) {
+};
+
+function DimGroup({ title, w, l, h, onW, onL, onH }: DimGroupProps) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-3">
       <div className="text-[11px] text-white/60 mb-2">{title}</div>
