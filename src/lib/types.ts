@@ -1,109 +1,76 @@
-import { z } from "zod";
+// LANDMARK: shared types
+
+export type OrderStatus = "PENDING" | "BACKORDERED" | "ARRIVED" | "SPECIAL";
+export type ItemType = "casket" | "urn";
 
 export type Supplier = {
   id: number;
   name: string;
-  ordering_instructions: string | null;
+  ordering_instructions?: string | null;
+  // LANDMARK: new contact fields
+  phone?: string | null;
+  email?: string | null;
+  ordering_website?: string | null;
 };
 
 export type Casket = {
   id: number;
   name: string;
   supplier_id: number | null;
+  material?: "WOOD" | "METAL" | "GREEN" | null;
+  jewish?: boolean | null;
+  green?: boolean | null;
   ext_width_in?: number | null;
   ext_length_in?: number | null;
   ext_height_in?: number | null;
   int_width_in?: number | null;
   int_length_in?: number | null;
   int_height_in?: number | null;
-  target_qty: number;
-  on_hand: number;
-  on_order: number;
-  backordered_count: number;
-  material: "Wood" | "Metal" | "Green Burial";
-  jewish: boolean;
-  green: boolean;
-  created_at?: string;
+  target_qty?: number | null;
+  on_hand?: number | null;
+  // these two are computed in API list responses where supported
+  on_order_live?: number;
+  backordered_live?: number;
 };
 
 export type Urn = {
   id: number;
   name: string;
   supplier_id: number | null;
+  category?: "FULL" | "KEEPSAKE" | "JEWELRY" | "SPECIAL" | null;
+  green?: boolean | null;
   width_in?: number | null;
   height_in?: number | null;
   depth_in?: number | null;
-  target_qty: number;
-  on_hand: number;
-  on_order: number;
-  backordered_count: number;
-  category: "Full Size" | "Keepsake" | "Jewelry" | "Special Use";
-  green: boolean;
-  created_at?: string;
+  target_qty?: number | null;
+  on_hand?: number | null;
+  // computed in API list responses where supported
+  on_order_live?: number;
+  backordered_live?: number;
 };
-
-export type OrderStatus = "PENDING" | "BACKORDERED" | "ARRIVED" | "SPECIAL";
-export type ItemType = "casket" | "urn";
 
 export type Order = {
   id: number;
   item_type: ItemType;
   item_id: number | null;
-  item_name: string | null;
+  item_name?: string | null;
   supplier_id: number | null;
   po_number: string;
-  expected_date: string | null;
+  expected_date?: string | null; // YYYY-MM-DD
   status: OrderStatus;
   backordered: boolean;
   tbd_expected: boolean;
-  special_order: boolean;
-  deceased_name: string | null;
-  need_by_date: string | null;
-  is_return: boolean;
-  return_reason: string | null;
-  notes: string | null;            // LANDMARK: notes field (backorder/special)
-  created_at: string;
-  arrived_at: string | null;
-  received_by: string | null;
+  created_at?: string; // ISO
+  arrived_at?: string | null;
+  received_by?: string | null;
+  notes?: string | null;
+  special_order?: boolean | null;
+  is_return?: boolean | null;
+  need_by_date?: string | null; // for special orders (deadline)
 };
 
 export type VOrderEnriched = Order & {
-  item_display_name: string | null;
-  supplier_name: string | null;
+  supplier_name?: string | null;
+  // Helpful deriveds for UI
+  item_display?: string | null;
 };
-
-export const CreateOrderSchema = z.object({
-  item_type: z.enum(["casket","urn"]),
-  // NORMAL: item_id set, item_name null
-  // SPECIAL: item_id null, item_name set
-  item_id: z.number().int().nullable(),
-  item_name: z.string().nullable(),
-  supplier_id: z.number().int().nullable().optional(),
-  po_number: z.string().min(1),
-  expected_date: z.string().nullable(),
-  backordered: z.boolean().default(false),
-  tbd_expected: z.boolean().default(false),
-  special_order: z.boolean().default(false),
-  deceased_name: z.string().nullable().optional(),
-  need_by_date: z.string().nullable().optional(),
-  is_return: z.boolean().default(false).optional(),
-  return_reason: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),     // LANDMARK: notes
-});
-export type CreateOrderInput = z.infer<typeof CreateOrderSchema>;
-
-export const UpdateOrderSchema = z.object({
-  po_number: z.string().min(1).optional(),
-  expected_date: z.string().nullable().optional(),
-  backordered: z.boolean().optional(),
-  tbd_expected: z.boolean().optional(),
-  need_by_date: z.string().nullable().optional(),
-  is_return: z.boolean().optional(),
-  return_reason: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),     // LANDMARK: notes
-});
-
-export const ArriveSchema = z.object({
-  received_by: z.string().min(1),
-  arrived_at: z.string().nullable().optional(),
-});
