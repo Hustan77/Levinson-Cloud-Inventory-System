@@ -1,21 +1,47 @@
 "use client";
 
-// LANDMARK: Dashboard (mixed order list)
-// - Imports use default exports for OrderCard, OrderModal, ArrivalModal
-// - Typed callbacks (no implicit any)
-// - Uses typedRoutes for Link to /orders
+// LANDMARK: Dashboard (mixed order list + inventory health KPIs)
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 
 import { HoloPanel } from "./components/HoloPanel";
-import OrderCard from "./components/OrderCard";          // FIX: default import
-import OrderModal from "./components/OrderModal";        // default export per latest component
-import { ArrivalModal } from "./components/ArrivalModal";    // default export per latest component
+import OrderCard from "./components/OrderCard";
+import OrderModal from "./components/OrderModal";
+import { ArrivalModal } from "./components/ArrivalModal";
 
 import { KpiTile } from "./components/KpiTile";
 import type { Casket, Supplier, Urn, VOrderEnriched } from "@/lib/types";
+
+// LANDMARK: mini KPI chip
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: "cyan" | "emerald" | "amber" | "rose" | "purple";
+}) {
+  const color =
+    accent === "cyan"
+      ? "ring-cyan-400/60 text-cyan-300"
+      : accent === "emerald"
+      ? "ring-emerald-400/60 text-emerald-300"
+      : accent === "amber"
+      ? "ring-amber-400/60 text-amber-300"
+      : accent === "rose"
+      ? "ring-rose-400/60 text-rose-300"
+      : "ring-purple-400/60 text-fuchsia-300";
+
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 ring-1 ${color}`}>
+      <span className="text-xs text-white/60">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [orders, setOrders] = useState<VOrderEnriched[]>([]);
@@ -43,13 +69,12 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  // Mixed list: filter out ARRIVED from dashboard (your spec)
+  // Mixed list: filter out ARRIVED from dashboard (they live in /orders history)
   const activeOrders = useMemo(
-    () => (orders ?? []).filter((o: VOrderEnriched) => o.status !== "ARRIVED"),
+    () => (orders ?? []).filter((o) => o.status !== "ARRIVED"),
     [orders]
   );
 
-  // Sort by created_at desc as a sensible default
   const activeSorted = useMemo(() => {
     return [...activeOrders].sort((a, b) => {
       const da = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -58,7 +83,60 @@ export default function DashboardPage() {
     });
   }, [activeOrders]);
 
-  // KPI counts
+  // LANDMARK: inventory health KPIs
+  const casketBackorderedIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const o of activeOrders) {
+      if (o.item_type === "casket" && o.backordered) {
+        if (o.item_id) ids.add(o.item_id);
+      }
+    }
+    return ids;
+  }, [activeOrders]);
+
+  const urnBackorderedIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const o of activeOrders) {
+      if (o.item_type === "urn" && o.backordered) {
+        if (o.item_id) ids.add(o.item_id);
+      }
+    }
+    return ids;
+  }, [activeOrders]);
+
+  const casketStats = useMemo(() => {
+    let belowTarget = 0;
+    let outOfStock = 0;
+    let backordered = 0;
+
+    for (const c of caskets) {
+      const target = (c as any).target_qty ?? null;
+      const onHand = (c as any).on_hand ?? 0;
+      const onOrder = (c as any).on_order ?? 0; // assumed synced from orders or maintained
+      if (target != null && onHand + onOrder < target) belowTarget++;
+      if (onHand === 0) outOfStock++;
+      if (casketBackorderedIds.has(c.id)) backordered++;
+    }
+    return { belowTarget, outOfStock, backordered };
+  }, [caskets, casketBackorderedIds]);
+
+  const urnStats = useMemo(() => {
+    let belowTarget = 0;
+    let outOfStock = 0;
+    let backordered = 0;
+
+    for (const u of urns) {
+      const target = (u as any).target_qty ?? null;
+      const onHand = (u as any).on_hand ?? 0;
+      const onOrder = (u as any).on_order ?? 0;
+      if (target != null && onHand + onOrder < target) belowTarget++;
+      if (onHand === 0) outOfStock++;
+      if (urnBackorderedIds.has(u.id)) backordered++;
+    }
+    return { belowTarget, outOfStock, backordered };
+  }, [urns, urnBackorderedIds]);
+
+  // KPI counts (top row remains)
   const kCaskets = caskets.length;
   const kUrns = urns.length;
   const kSuppliers = suppliers.length;
@@ -71,42 +149,58 @@ export default function DashboardPage() {
         <h1 className="text-white/90 text-lg">Dashboard</h1>
         <div className="flex items-center gap-3">
           <Link
-            href={"/orders" as Route} // typedRoutes friendly
+            href={"/orders" as Route}
             className="inline-flex h-9 px-3 items-center rounded-md border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
             title="View all orders (past year)"
           >
             View All Orders
           </Link>
-          {/* Create Order trigger lives here */}
           <OrderModal onCreated={load} />
         </div>
       </div>
 
       {/* LANDMARK: KPI Tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* LANDMARK: KPI Tiles */}
         <KpiTile label="Caskets" value={kCaskets} accent="cyan" />
         <KpiTile label="Urns" value={kUrns} accent="emerald" />
         <KpiTile label="Suppliers" value={kSuppliers} accent="purple" />
         <KpiTile label="Active Orders" value={kActiveOrders} accent="amber" />
       </div>
 
+      {/* LANDMARK: Inventory Health snapshots */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <HoloPanel rail railColor="cyan">
+          <div className="text-white/80 text-sm mb-3">Caskets — Inventory Health</div>
+          <div className="flex flex-wrap gap-3">
+            <MiniStat label="Below Target" value={casketStats.belowTarget} accent="amber" />
+            <MiniStat label="Backordered" value={casketStats.backordered} accent="rose" />
+            <MiniStat label="None On Hand" value={casketStats.outOfStock} accent="rose" />
+          </div>
+        </HoloPanel>
+        <HoloPanel rail railColor="emerald">
+          <div className="text-white/80 text-sm mb-3">Urns — Inventory Health</div>
+          <div className="flex flex-wrap gap-3">
+            <MiniStat label="Below Target" value={urnStats.belowTarget} accent="amber" />
+            <MiniStat label="Backordered" value={urnStats.backordered} accent="rose" />
+            <MiniStat label="None On Hand" value={urnStats.outOfStock} accent="rose" />
+          </div>
+        </HoloPanel>
+      </div>
+
       {/* LANDMARK: Mixed Order List */}
       <HoloPanel rail railColor="cyan">
         <div className="text-white/80 text-sm mb-2">Active Orders</div>
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-          {activeSorted.map((o: VOrderEnriched) => (
+          {activeSorted.map((o) => (
             <OrderCard
               key={o.id}
               order={o}
               suppliers={suppliers}
               caskets={caskets}
               urns={urns}
-              // FIX: add explicit type to avoid implicit any
-              onMarkDelivered={(oo: VOrderEnriched) => setArriving(oo)}
-              onEdit={(oo: VOrderEnriched) => {
-                // You can wire an Edit Order modal here; for now just open arrival if needed,
-                // or route to a detail page when ready.
-                // Example placeholder:
+              onMarkDelivered={(oo) => setArriving(oo)}
+              onEdit={(oo) => {
                 console.log("Edit order requested:", oo.id);
               }}
             />
