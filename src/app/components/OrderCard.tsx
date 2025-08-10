@@ -1,19 +1,29 @@
 "use client";
 
-/**
- * OrderCard
- * - Supplier resolves via:
- *   1) order.supplier_name (from v_orders_enriched or join)
- *   2) suppliers.find by numeric equality on id vs supplier_id
- *   3) order.supplier (string from older views)
- * - Icons in a dedicated footer row (no overlap with text)
- * - Subtle "due today / overdue" ring on the info slab
- */
-
 import React from "react";
 import { HoloPanel } from "./HoloPanel";
-import type { Casket, Supplier, Urn, VOrderEnriched } from "@/lib/types";
-import { Pencil, PackageCheck } from "lucide-react";
+import type { Supplier, Casket, Urn, VOrderEnriched } from "@/lib/types";
+
+const IconEdit = (p: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" {...p}>
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor" />
+    <path d="M20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor" />
+  </svg>
+);
+const IconBox = (p: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" {...p}>
+    <path d="M21 8l-9-5-9 5 9 5 9-5zm-9 7l-9-5v6l9 5 9-5v-6l-9 5z" fill="currentColor" />
+  </svg>
+);
+
+type Props = {
+  order: VOrderEnriched;
+  suppliers: Supplier[];
+  caskets: Casket[];
+  urns: Urn[];
+  onMarkDelivered?: (o: VOrderEnriched) => void;
+  onEdit?: (o: VOrderEnriched) => void;
+};
 
 export default function OrderCard({
   order,
@@ -22,99 +32,82 @@ export default function OrderCard({
   urns,
   onMarkDelivered,
   onEdit,
-}: {
-  order: VOrderEnriched;
-  suppliers: Supplier[];
-  caskets: Casket[];
-  urns: Urn[];
-  onMarkDelivered?: (o: VOrderEnriched) => void;
-  onEdit?: (o: VOrderEnriched) => void;
-}) {
-  const status = order.status; // PENDING | BACKORDERED | SPECIAL | ARRIVED
-  const rail =
-    status === "ARRIVED" ? "emerald" : status === "SPECIAL" ? "purple" : status === "BACKORDERED" ? "rose" : "amber";
-
-  // LANDMARK: robust supplier + item name resolution (coerce id types)
+}: Props) {
+  // Supplier resolution: view -> API fallback -> local list -> "—"
   const supplierName =
-    (order as any).supplier_name ??
-    suppliers.find((s) => Number(s.id) === Number(order.supplier_id))?.name ??
-    (order as any).supplier ??
+    order.supplier_name ??
+    (order.supplier_id
+      ? suppliers.find((s) => s.id === order.supplier_id)?.name ?? null
+      : null) ??
     "—";
 
+  // Item display name: view/API field; otherwise resolve from lists
   const itemName =
-    order.item_name ||
-    (order.item_type === "casket"
-      ? caskets.find((c) => Number(c.id) === Number(order.item_id))?.name
-      : urns.find((u) => Number(u.id) === Number(order.item_id))?.name) ||
-    "(unnamed item)";
+    order.item_display_name ??
+    (order.status === "SPECIAL"
+      ? order.item_name ?? "Special Order"
+      : order.item_type === "casket"
+      ? (order.item_id && caskets.find((c) => c.id === order.item_id)?.name) || "Casket"
+      : (order.item_id && urns.find((u) => u.id === order.item_id)?.name) || "Urn");
 
-  // Due today / overdue highlight
-  let dueRing = "";
-  if (order.expected_date && status !== "ARRIVED" && !order.tbd_expected) {
-    const today = new Date();
-    const d = new Date(order.expected_date);
-    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const dueMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    if (dueMid <= todayMid) dueRing = "ring-1 ring-amber-400/60";
-  }
+  const rail =
+    order.status === "ARRIVED"
+      ? "emerald"
+      : order.status === "SPECIAL"
+      ? "purple"
+      : order.backordered
+      ? "rose"
+      : "amber";
 
   return (
-    <HoloPanel rail railColor={rail} className="flex flex-col gap-3 p-4">
-      {/* LANDMARK: header */}
-      <div className="flex items-start gap-2">
-        <div className="text-white/90 text-sm leading-5 truncate">{itemName}</div>
-        <div className="ml-auto text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-white/10 text-white/70">
-          {status}
-        </div>
+    <HoloPanel railColor={rail} className="min-h-[170px] pb-10 flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="text-white/90 truncate">{itemName}</div>
+        <span
+          className={[
+            "inline-flex items-center px-2 h-6 rounded-md border text-xs",
+            order.status === "ARRIVED"
+              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+              : order.status === "SPECIAL"
+              ? "border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-300"
+              : order.backordered
+              ? "border-rose-400/30 bg-rose-500/10 text-rose-300"
+              : "border-amber-400/30 bg-amber-500/10 text-amber-300",
+          ].join(" ")}
+        >
+          {order.status}
+        </span>
       </div>
 
-      {/* LANDMARK: body */}
-      <div className={`rounded-lg border border-white/10 bg-white/5 p-2 text-xs ${dueRing}`}>
-        <div className="text-white/70">
-          <span className="text-white/50">Supplier:</span>{" "}
-          <span className="text-white/80">{supplierName}</span>
-        </div>
-        <div className="text-white/70">
-          <span className="text-white/50">PO#:</span> <span className="text-white/80">{order.po_number}</span>
-        </div>
-        {order.tbd_expected ? (
-          <div className="text-white/70">
-            <span className="text-white/50">Expected:</span> <span className="text-white/80">TBD</span>
-          </div>
-        ) : (
-          order.expected_date && (
-            <div className="text-white/70">
-              <span className="text-white/50">Expected:</span>{" "}
-              <span className="text-white/80">{new Date(order.expected_date).toLocaleDateString()}</span>
-            </div>
-          )
-        )}
-        {order.backordered && <div className="text-rose-300/90">Backordered</div>}
-        {(order as any).notes && (
-          <div className="text-white/60 mt-1 line-clamp-3">{(order as any).notes}</div>
-        )}
+      <div className="text-xs text-white/60 mt-1">Supplier: {supplierName}</div>
+      <div className="text-xs text-white/60">
+        PO#: {order.po_number}{" "}
+        {order.expected_date
+          ? `• Expected: ${order.expected_date}`
+          : order.tbd_expected
+          ? "• Expected: TBD"
+          : ""}
       </div>
 
-      {/* LANDMARK: footer actions */}
-      <div className="mt-1 pt-2 border-t border-white/10 flex items-center justify-end gap-2">
-        {onEdit && (
-          <button
-            aria-label="Edit order"
-            className="p-2 rounded-md border border-white/10 hover:bg-white/10 text-white/80"
-            onClick={() => onEdit(order)}
-          >
-            <Pencil size={16} />
-          </button>
-        )}
-        {onMarkDelivered && (
-          <button
-            aria-label="Mark delivered"
-            className="p-2 rounded-md border border-white/10 hover:bg-white/10 text-white/80"
-            onClick={() => onMarkDelivered(order)}
-          >
-            <PackageCheck size={16} />
-          </button>
-        )}
+      <div className="mt-auto pt-3 flex items-center justify-end gap-2 border-t border-white/10">
+        <button
+          type="button"
+          title="Edit order"
+          aria-label="Edit order"
+          onClick={() => onEdit?.(order)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
+        >
+          <IconEdit className="text-white/80" />
+        </button>
+        <button
+          type="button"
+          title="Mark delivered"
+          aria-label="Mark delivered"
+          onClick={() => onMarkDelivered?.(order)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/5 hover:bg-white/10 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+        >
+          <IconBox className="text-emerald-300" />
+        </button>
       </div>
     </HoloPanel>
   );
