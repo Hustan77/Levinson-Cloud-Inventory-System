@@ -2,9 +2,9 @@
 
 /**
  * LANDMARK: OrderModal (Create Order)
- * - Clean searchable combobox
- * - Once selected, the list collapses to only the chosen item, with a “Change” control
- * - Supplier’s ordering website link shows when known
+ * - Clean searchable table list
+ * - Click ANYWHERE on a row to select (not just a tiny button)
+ * - After selection: shows Supplier name + Ordering Website link + Ordering Instructions
  * - Backorder flow: date or TBD + notes
  * - Special order: choose from catalog (searchable) or custom (pick supplier)
  */
@@ -40,7 +40,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
   const [customName, setCustomName] = useState("");
   const [customSupplierId, setCustomSupplierId] = useState<number | "">("");
 
-  // load data when opened
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -55,7 +54,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
     })();
   }, [open]);
 
-  // combined list for current mode
   const list = useMemo(() => {
     const base =
       mode === "urn"
@@ -165,7 +163,6 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
     await onCreated?.();
   }
 
-  // UI bits
   function ModeTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
     return (
       <button
@@ -221,7 +218,7 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
               </div>
             )}
 
-            {/* Searchable combobox + list (hidden after selection) */}
+            {/* Searchable list (hidden after selection) */}
             {!(mode==="special" && specialMode==="custom") && (
               <div className="mb-3">
                 <div className="label-xs">Search {mode==="urn" ? "Urns" : mode==="casket" ? "Caskets" : "Catalog"} (type to filter)</div>
@@ -247,18 +244,17 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
                             const sid = (row as any).supplier_id;
                             const s = suppliers.find((x)=>x.id===sid);
                             return (
-                              <tr key={row.id} className="border-t border-white/5 hover:bg-white/5">
+                              <tr
+                                key={row.id}
+                                className="border-t border-white/5 hover:bg-white/5 cursor-pointer"
+                                onClick={()=>setSelectedId(row.id)} // LANDMARK: whole row selects
+                              >
                                 <td className="px-3 py-2 text-white/90">{row.name}</td>
                                 <td className="px-3 py-2 text-white/70">{s?.name ?? "—"}</td>
                                 <td className="px-3 py-2">
-                                  <button
-                                    type="button"
-                                    onClick={()=>setSelectedId(row.id)}
-                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-cyan-400/60 bg-cyan-400/10 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                                    aria-label="Select"
-                                  >
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-cyan-400/60 bg-cyan-400/10">
                                     ✓
-                                  </button>
+                                  </span>
                                 </td>
                               </tr>
                             );
@@ -274,12 +270,13 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
 
                 {selectedItem && (
                   <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="text-white/90">
                         <div className="text-sm">{selectedItem.name}</div>
                         <div className="text-xs text-white/60">
                           Supplier: {selectedSupplier?.name ?? "—"}
                         </div>
+                        {/* LANDMARK: ordering website + instructions */}
                         {selectedSupplier?.ordering_website && (
                           <div className="text-xs mt-1">
                             <a
@@ -292,10 +289,16 @@ export default function OrderModal({ onCreated }: { onCreated?: () => void | Pro
                             </a>
                           </div>
                         )}
+                        {selectedSupplier?.ordering_instructions && (
+                          <div className="text-[11px] text-white/70 mt-2 whitespace-pre-wrap">
+                            <span className="text-white/50">Ordering Instructions:</span>{" "}
+                            {selectedSupplier.ordering_instructions}
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"
-                        className="h-8 px-3 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 text-sm"
+                        className="h-8 px-3 shrink-0 rounded-md border border-white/10 bg-white/5 hover:bg-white/10 text-sm"
                         onClick={()=>{ setSelectedId(null); setQ(""); }}
                       >
                         Change

@@ -1,71 +1,130 @@
 "use client";
 
 /**
- * LANDMARK: ArrivalModal — tolerant props
- * - onClose is now optional; defaults to a no-op (so older call-sites compile)
- * - triggerLabel?: string is accepted (ignored) for backward compatibility
- * - Title present for a11y; parent controls z-index/backdrop
+ * LANDMARK: ArrivalModal (portal + high z-index)
+ * - Renders via React portal into document.body to avoid stacking context issues.
+ * - Backdrop + sheet use very high z to sit above any card/component.
+ * - Accessible title. No Radix used (avoids DialogTitle warnings).
  */
 
-import React, { useState } from "react";
-import { HoloPanel } from "./HoloPanel";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import type { VOrderEnriched } from "../../lib/types";
+import type { VOrderEnriched } from "@/lib/types";
 
 export function ArrivalModal({
   order,
-  onCompleted,
   onClose,
-  // Back-compat only: previously some code passed a label to render a trigger button.
-  // The new modal is controlled by the parent; we accept this prop to avoid TS errors.
-  triggerLabel, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onCompleted,
 }: {
   order: VOrderEnriched;
-  onCompleted?: () => void;
-  onClose?: () => void;         // made optional
-  triggerLabel?: string;        // back-compat, ignored
+  onClose: () => void;
+  onCompleted: () => void | Promise<void>;
 }) {
+  const [mounted, setMounted] = useState(false);
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+
   const [receivedBy, setReceivedBy] = useState("");
+  const [arrivedAt, setArrivedAt] = useState<string>("");
+
+  // Keep an easy-to-read display name
+  const itemDisplay = useMemo(() => {
+    return order.item_display || order.item_name || `${order.item_type === "urn" ? "Urn" : "Casket"}${order.item_id ? ` #${order.item_id}` : ""}`;
+  }, [order]);
+
+  useEffect(() => {
+    setMounted(true);
+    const el = document.createElement("div");
+    el.setAttribute("data-portal", "arrival-modal");
+    document.body.appendChild(el);
+    setContainer(el);
+    return () => {
+      document.body.removeChild(el);
+    };
+  }, []);
 
   async function submit() {
+    const payload: any = {
+      received_by: receivedBy.trim() || "Unknown",
+      arrived_at: arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
+    };
+
     const res = await fetch(`/api/orders/${order.id}/arrive`, {
       method: "PATCH",
-      body: JSON.stringify({ received_by: receivedBy }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
+
     if (!res.ok) {
-      alert(await res.text());
+      const txt = await res.text();
+      alert(`Failed: ${txt}`);
       return;
     }
-    onCompleted?.();
+
+    await onCompleted();
   }
 
-  // No-op close if parent didn't pass one (back-compat)
-  const close = onClose ?? (() => {});
+  if (!mounted || !container) return null;
 
-  return (
-    <HoloPanel railColor="emerald" className="w-full max-w-xl">
-      {/* LANDMARK: Title present for a11y */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-white/90 text-base">Mark Delivered</div>
-        <Button variant="outline" onClick={close}>Close</Button>
-      </div>
+  return createPortal(
+    <div className="fixed inset-0 z-[120]"> {/* super high z-index */}
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/65" onClick={onClose} />
 
-      <div className="space-y-2">
-        <div className="text-sm text-white/70">{order.item_name ?? `Order #${order.id}`}</div>
-        <div className="space-y-1">
-          <div className="label-xs">Received by</div>
-          <Input
-            value={receivedBy}
-            onChange={(e) => setReceivedBy(e.target.value)}
-            placeholder="Your name"
-          />
+      {/* Sheet */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="arrival-modal-title"
+        className="absolute inset-0 flex items-center justify-center p-4"
+      >
+        <div className="relative w-full max-w-xl rounded-2xl border border-white/10 bg-neutral-900/95 backdrop-blur-xl p-5 shadow-[0_0_80px_rgba(0,0,0,0.65)]">
+          {/* LANDMARK: Title */}
+          <h2 id="arrival-modal-title" className="text-white/90 text-sm mb-3">
+            Mark Delivered — Order #{order.id}
+          </h2>
+
+          <div className="space-y-2 text-sm">
+            <div className="text-white/70">
+              <span className="text-white/50">Item:</span>{" "}
+              <span className="text-white/90">{itemDisplay}</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="label-xs">Received by</div>
+                <Input
+                  className="input-sm"
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  placeholder="Your name"
+                />
+              </div>
+              <div>
+                <div className="label-xs">Arrived at (optional)</div>
+                <Input
+                  className="input-sm"
+                  type="datetime-local"
+                  value={arrivedAt}
+                  onChange={(e) => setArrivedAt(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={submit}>
+              Mark Delivered
+            </Button>
+          </div>
         </div>
       </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button onClick={submit}>Save</Button>
-      </div>
-    </HoloPanel>
+    </div>,
+    container
   );
 }
+
+export default ArrivalModal;
